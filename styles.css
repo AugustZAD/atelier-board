@@ -114,8 +114,11 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
 .progress-detail { grid-column: 1; color: #8a8178; }
 .eta-text { grid-column: 2; grid-row: 2; color: var(--bronze); text-align: right; }
 
-.gallery { columns: 2; column-gap: 8px; }
-.garment-card { display: inline-block; width: 100%; margin: 0 0 18px; break-inside: avoid; vertical-align: top; }
+.gallery { columns: 2; column-gap: 4px; }
+.garment-card { display: inline-block; width: 100%; margin: 0 0 8px; break-inside: avoid; vertical-align: top; }
+.preview-section:has(.gallery) { padding-inline: 8px; }
+body[data-mode="original"] .preview-section { background: #fff; }
+body[data-mode="original"] .image-wrap { background-color: #fff; background-image: none; }
 .image-wrap { position: relative; min-height: 160px; overflow: hidden; background-color: var(--paper); background-image: linear-gradient(45deg, rgba(255,255,255,.32) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.32) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.32) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.32) 75%); background-position: 0 0, 0 5px, 5px -5px, -5px 0; background-size: 10px 10px; }
 .image-wrap img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity .3s ease; }
 .garment-card.is-ready img { opacity: 1; }
@@ -123,7 +126,7 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
 .garment-card.is-ready .card-loader, .garment-card.is-error .card-loader { display: none; }
 .remove-button { position: absolute; top: 7px; right: 7px; display: grid; width: 32px; height: 32px; padding: 0; place-items: center; color: white; background: rgba(24,21,18,.78); border: 0; border-radius: 50%; cursor: pointer; }
 .remove-button svg { width: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.5; }
-.card-meta { display: flex; justify-content: space-between; gap: 6px; padding-top: 8px; color: #716960; font-family: var(--serif); font-size: 11px; letter-spacing: .08em; }
+.card-meta { display: flex; justify-content: space-between; gap: 6px; padding: 5px 2px 0; color: #716960; font-family: var(--serif); font-size: 10px; letter-spacing: .08em; }
 .card-state { font-family: var(--sans); font-size: 9px; letter-spacing: 0; }
 .garment-card.is-error .card-state { color: #9a342b; }
 
@@ -157,7 +160,7 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
   .masthead { padding-inline: 32px; }
   .hero { padding: 96px 24px 84px; }
   .studio, .preview-section { padding: 40px 24px; }
-  .gallery { column-gap: 14px; }
+  .gallery { column-gap: 6px; }
   .action-bar { left: 50%; width: min(100%, 760px); transform: translateX(-50%); }
 }
 

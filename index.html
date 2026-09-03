@@ -14,7 +14,7 @@
   <body>
     <header class="masthead">
       <a class="wordmark" href="#top" aria-label="Atelier Board 首页">ATELIER BOARD</a>
-      <span id="serviceBadge" class="privacy"><i></i> 原图同色实验</span>
+      <span id="serviceBadge" class="privacy"><i></i> 原图白底</span>
     </header>
 
     <main id="top">
@@ -40,13 +40,13 @@
           <legend class="field-label">图片处理方式</legend>
           <label class="mode-option">
             <input type="radio" name="processingMode" value="original" checked />
-            <span><strong>原图同色</strong><small>不抠图 · 最快</small></span>
+            <span><strong>保留白底</strong><small>不抠图 · 最快</small></span>
           </label>
           <label class="mode-option">
             <input type="radio" name="processingMode" value="cutout" />
             <span><strong>AI 抠图</strong><small>复杂背景适用</small></span>
           </label>
-          <p id="modeDescription" class="mode-description">保留商品原图，只将四周纯色背景融入画册底色，不启动 GPU。</p>
+          <p id="modeDescription" class="mode-description">完整保留衣服和原始白底，只裁掉四周空白，不启动 GPU。</p>
         </fieldset>
 
         <label id="dropZone" class="drop-zone" for="fileInput">
@@ -60,7 +60,7 @@
 
         <div class="processing-note">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s8-3.4 8-9.5V5l-8-3-8 3v6.5C4 17.6 12 21 12 21Z" /><path d="m9 12 2 2 4-4" /></svg>
-          <p id="processingCopy"><strong>极速同色处理，手机无需运行模型</strong><br />图片会压缩并统一底色，处理结果与分享网址保存 30 天。</p>
+          <p id="processingCopy"><strong>保留原图白底，不修改衣服像素</strong><br />仅压缩图片并裁去多余空白，处理结果与分享网址保存 30 天。</p>
         </div>
       </section>
 

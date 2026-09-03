@@ -1,7 +1,8 @@
 const MAX_FILES = 50;
 const MAX_EDGE = matchMedia('(pointer: coarse)').matches ? 1280 : 1440;
 const SHARE_API = 'https://atelier-board-share.s98081096.workers.dev';
-const BOARD_BACKGROUND = '#f3efe8';
+const ORIGINAL_BACKGROUND = '#ffffff';
+const CUTOUT_BACKGROUND = '#f3efe8';
 
 const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'original' };
 const $ = (selector) => document.querySelector(selector);
@@ -73,7 +74,7 @@ async function addFiles(files) {
       });
       item.status = 'uploaded';
       state.uploaded += 1;
-      updateCard(item, state.mode === 'cutout' ? '等待云端抠图' : '底色已统一');
+      updateCard(item, state.mode === 'cutout' ? '等待云端抠图' : '保留原图');
       updateProgress();
     });
 
@@ -109,7 +110,7 @@ async function pollJob(job, items) {
         image.src = item.url; image.alt = `服装单品 ${state.items.indexOf(item) + 1}`;
         card.classList.add('is-ready');
       }
-      updateCard(item, state.mode === 'cutout' ? '云端已抠图' : '原图同色');
+      updateCard(item, state.mode === 'cutout' ? '云端已抠图' : '原图白底');
       rendered += 1;
     }
     updateUI();
@@ -131,55 +132,53 @@ async function prepareProductImage(file, mode) {
     const context = canvas.getContext('2d');
     context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, height);
     context.drawImage(bitmap, 0, 0, bitmap.width, sourceHeight, 0, 0, width, height);
-    if (mode === 'original') harmonizeBackground(context, width, height);
-    return await canvasToBlob(canvas, 'image/jpeg', .9);
+    const outputCanvas = mode === 'original' ? trimWhiteSpace(canvas) : canvas;
+    return await canvasToBlob(outputCanvas, 'image/jpeg', .92);
   } finally { bitmap.close(); }
 }
 
-function harmonizeBackground(context, width, height) {
-  const frame = context.getImageData(0, 0, width, height);
-  const pixels = frame.data;
-  const sampleSize = Math.max(2, Math.min(10, Math.round(Math.min(width, height) * .008)));
-  const corners = [[0, 0], [width - sampleSize, 0], [0, height - sampleSize], [width - sampleSize, height - sampleSize]];
-  const samples = [];
-  for (const [startX, startY] of corners) {
-    for (let y = startY; y < startY + sampleSize; y += 2) {
-      for (let x = startX; x < startX + sampleSize; x += 2) {
-        const offset = (y * width + x) * 4;
-        samples.push([pixels[offset], pixels[offset + 1], pixels[offset + 2]]);
+function trimWhiteSpace(canvas) {
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const { width, height } = canvas;
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const corners = [[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]];
+  const background = corners.reduce((sum, [x, y]) => {
+    const offset = (y * width + x) * 4;
+    return [sum[0] + pixels[offset], sum[1] + pixels[offset + 1], sum[2] + pixels[offset + 2]];
+  }, [0, 0, 0]).map((value) => value / corners.length);
+  const columnHits = new Uint16Array(width);
+  const rowHits = new Uint16Array(height);
+  const thresholdSquared = 13 * 13;
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      const offset = (y * width + x) * 4;
+      const red = pixels[offset] - background[0];
+      const green = pixels[offset + 1] - background[1];
+      const blue = pixels[offset + 2] - background[2];
+      if (red * red + green * green + blue * blue > thresholdSquared) {
+        columnHits[x] += 1; rowHits[y] += 1;
       }
     }
   }
-  samples.sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
-  const background = samples[Math.floor(samples.length / 2)] || [255, 255, 255];
-  const target = [243, 239, 232];
-  const thresholdSquared = 58 * 58;
-  const queue = new Uint32Array(width * height);
-  const visited = new Uint8Array(width * height);
-  let head = 0; let tail = 0;
-
-  const enqueue = (pixelIndex) => {
-    if (visited[pixelIndex]) return;
-    const offset = pixelIndex * 4;
-    const red = pixels[offset] - background[0];
-    const green = pixels[offset + 1] - background[1];
-    const blue = pixels[offset + 2] - background[2];
-    visited[pixelIndex] = 1;
-    if (red * red + green * green + blue * blue <= thresholdSquared) queue[tail++] = pixelIndex;
-  };
-  for (let x = 0; x < width; x += 1) { enqueue(x); enqueue((height - 1) * width + x); }
-  for (let y = 1; y < height - 1; y += 1) { enqueue(y * width); enqueue(y * width + width - 1); }
-  while (head < tail) {
-    const pixelIndex = queue[head++];
-    const offset = pixelIndex * 4;
-    pixels[offset] = target[0]; pixels[offset + 1] = target[1]; pixels[offset + 2] = target[2];
-    const x = pixelIndex % width;
-    if (x > 0) enqueue(pixelIndex - 1);
-    if (x < width - 1) enqueue(pixelIndex + 1);
-    if (pixelIndex >= width) enqueue(pixelIndex - width);
-    if (pixelIndex < width * (height - 1)) enqueue(pixelIndex + width);
-  }
-  context.putImageData(frame, 0, 0);
+  const minColumnHits = Math.max(2, Math.round(height / 420));
+  const minRowHits = Math.max(2, Math.round(width / 420));
+  let left = 0; let right = width - 1; let top = 0; let bottom = height - 1;
+  while (left < right && columnHits[left] < minColumnHits) left += 2;
+  while (right > left && columnHits[right - (right % 2)] < minColumnHits) right -= 2;
+  while (top < bottom && rowHits[top] < minRowHits) top += 2;
+  while (bottom > top && rowHits[bottom - (bottom % 2)] < minRowHits) bottom -= 2;
+  const detectedWidth = right - left;
+  const detectedHeight = bottom - top;
+  if (detectedWidth < width * .12 || detectedHeight < height * .12) return canvas;
+  const padding = Math.round(Math.max(detectedWidth, detectedHeight) * .055);
+  left = Math.max(0, left - padding); top = Math.max(0, top - padding);
+  right = Math.min(width, right + padding); bottom = Math.min(height, bottom + padding);
+  const cropped = document.createElement('canvas');
+  cropped.width = right - left; cropped.height = bottom - top;
+  const croppedContext = cropped.getContext('2d');
+  croppedContext.fillStyle = '#ffffff'; croppedContext.fillRect(0, 0, cropped.width, cropped.height);
+  croppedContext.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
+  return cropped;
 }
 
 function detectScreenshotCrop(bitmap) {
@@ -255,13 +254,13 @@ function updateProgress() {
     const percent = Math.round(state.uploaded / Math.max(1, state.batchTotal) * 35);
     progressBar.style.width = `${Math.max(3, percent)}%`;
     $('#progressText').textContent = `安全上传 ${state.uploaded} / ${state.batchTotal}`;
-    $('#progressDetail').textContent = state.mode === 'cutout' ? '原图将在抠图完成后立即删除' : '正在统一商品图与画册底色';
+    $('#progressDetail').textContent = state.mode === 'cutout' ? '原图将在抠图完成后立即删除' : '只做裁边与压缩，不修改衣服像素';
     $('#etaText').textContent = '';
     return;
   }
   const percent = 35 + Math.round(state.completed / Math.max(1, state.batchTotal) * 65);
   progressBar.style.width = `${percent}%`;
-  $('#progressText').textContent = state.mode === 'cutout' ? `L4 云端抠图 ${state.completed} / ${state.batchTotal}` : `原图同色 ${state.completed} / ${state.batchTotal}`;
+  $('#progressText').textContent = state.mode === 'cutout' ? `L4 云端抠图 ${state.completed} / ${state.batchTotal}` : `原图白底 ${state.completed} / ${state.batchTotal}`;
   $('#progressDetail').textContent = state.mode === 'cutout' ? '可以留在此页面查看实时结果' : '不启动 GPU，上传完成即可预览';
   if (state.completed > 0 && state.completed < state.batchTotal) {
     const elapsed = performance.now() - state.cloudStartedAt;
@@ -280,7 +279,7 @@ async function createShareLink() {
       json: {
         title: $('#collectionTitle').value.trim() || '精选系列',
         mode: state.mode,
-        background: BOARD_BACKGROUND,
+        background: state.mode === 'original' ? ORIGINAL_BACKGROUND : CUTOUT_BACKGROUND,
         items: ready.map(({ jobId, index, token }) => ({ jobId, index, token }))
       }
     });
@@ -323,12 +322,13 @@ function toast(message) { const element = $('#toast'); element.textContent = mes
 
 function updateModeCopy() {
   const original = state.mode === 'original';
-  $('#serviceBadge').innerHTML = `<i></i> ${original ? '原图同色实验' : 'L4 云端抠图'}`;
+  document.body.dataset.mode = state.mode;
+  $('#serviceBadge').innerHTML = `<i></i> ${original ? '原图白底' : 'L4 云端抠图'}`;
   $('#modeDescription').textContent = original
-    ? '保留商品原图，只将四周纯色背景融入画册底色，不启动 GPU。'
+    ? '完整保留衣服和原始白底，只裁掉四周空白，不启动 GPU。'
     : '识别服装主体并生成透明背景，适合现场照或复杂背景。';
   $('#processingCopy').innerHTML = original
-    ? '<strong>极速同色处理，手机无需运行模型</strong><br>图片会压缩并统一底色，处理结果与分享网址保存 30 天。'
+    ? '<strong>保留原图白底，不修改衣服像素</strong><br>仅压缩图片并裁去多余空白，处理结果与分享网址保存 30 天。'
     : '<strong>专用 GPU 统一处理，手机无需运行模型</strong><br>原图经加密上传，抠图成功后立即删除；处理结果与分享网址保存 30 天。';
 }
 
