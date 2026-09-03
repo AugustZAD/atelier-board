@@ -49,7 +49,7 @@ async function addFiles(files) {
   if (!accepted.length) return toast('已经达到 50 张上限');
 
   const batchItems = accepted.map((file) => {
-    const item = { id: crypto.randomUUID(), file, status: 'queued', jobId: '', index: -1, token: '', url: '' };
+    const item = { id: crypto.randomUUID(), file, status: 'queued', jobId: '', index: -1, token: '', url: '', background: ORIGINAL_BACKGROUND };
     state.items.push(item); createCard(item); return item;
   });
   previewSection.hidden = false;
@@ -68,9 +68,11 @@ async function addFiles(files) {
     await runPool(batchItems, 3, async (item) => {
       item.status = 'uploading'; updateCard(item, '正在上传');
       const prepared = await prepareProductImage(item.file, state.mode);
+      item.background = prepared.background;
+      updateGallerySurface();
       item.file = null;
       await api(`/api/jobs/${job.jobId}/images/${item.index}`, {
-        method: 'PUT', token: job.token, body: prepared, contentType: prepared.type
+        method: 'PUT', token: job.token, body: prepared.blob, contentType: prepared.blob.type
       });
       item.status = 'uploaded';
       state.uploaded += 1;
@@ -133,8 +135,30 @@ async function prepareProductImage(file, mode) {
     context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, height);
     context.drawImage(bitmap, 0, 0, bitmap.width, sourceHeight, 0, 0, width, height);
     const outputCanvas = mode === 'original' ? trimWhiteSpace(canvas) : canvas;
-    return await canvasToBlob(outputCanvas, 'image/jpeg', .92);
+    return {
+      background: mode === 'original' ? sampleBackground(outputCanvas) : CUTOUT_BACKGROUND,
+      blob: await canvasToBlob(outputCanvas, 'image/jpeg', .92)
+    };
   } finally { bitmap.close(); }
+}
+
+function sampleBackground(canvas) {
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const inset = Math.max(1, Math.round(Math.min(canvas.width, canvas.height) * .012));
+  const size = Math.max(1, Math.min(12, inset, canvas.width, canvas.height));
+  const points = [
+    [inset, inset], [canvas.width - inset - size, inset],
+    [inset, canvas.height - inset - size], [canvas.width - inset - size, canvas.height - inset - size]
+  ];
+  const channels = [[], [], []];
+  for (const [x, y] of points) {
+    const pixels = context.getImageData(Math.max(0, x), Math.max(0, y), size, size).data;
+    for (let index = 0; index < pixels.length; index += 4) {
+      channels[0].push(pixels[index]); channels[1].push(pixels[index + 1]); channels[2].push(pixels[index + 2]);
+    }
+  }
+  const rgb = channels.map((values) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)]);
+  return `#${rgb.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
 function trimWhiteSpace(canvas) {
@@ -211,6 +235,7 @@ function createCard(item) {
   const fragment = $('#cardTemplate').content.cloneNode(true);
   const card = fragment.querySelector('.garment-card');
   card.dataset.id = item.id;
+  card.style.setProperty('--item-background', item.background);
   card.querySelector('.remove-button').addEventListener('click', () => removeItem(item.id));
   gallery.appendChild(fragment);
 }
@@ -219,6 +244,7 @@ function updateCard(item, label) {
   const card = gallery.querySelector(`[data-id="${item.id}"]`);
   if (!card) return;
   card.querySelector('.card-state').textContent = label;
+  card.style.setProperty('--item-background', item.background);
   card.classList.toggle('is-error', item.status === 'error');
 }
 
@@ -244,7 +270,23 @@ function updateUI() {
   document.querySelectorAll('input[name="processingMode"]').forEach((input) => { input.disabled = state.processing || state.items.length > 0; });
   exportButton.disabled = state.processing || ready === 0;
   [...gallery.children].forEach((card, index) => { card.querySelector('.card-index').textContent = `LOOK ${String(index + 1).padStart(2, '0')}`; });
+  updateGallerySurface();
   updateProgress();
+}
+
+function updateGallerySurface() {
+  const background = state.mode === 'original' ? resolveGalleryBackground(state.items) : CUTOUT_BACKGROUND;
+  previewSection.style.setProperty('--gallery-background', background);
+}
+
+function resolveGalleryBackground(items) {
+  const colors = items.map((item) => item.background).filter((color) => /^#[0-9a-f]{6}$/i.test(color));
+  if (!colors.length) return ORIGINAL_BACKGROUND;
+  const channels = [0, 1, 2].map((channel) => {
+    const values = colors.map((color) => Number.parseInt(color.slice(1 + channel * 2, 3 + channel * 2), 16)).sort((a, b) => a - b);
+    return values[Math.floor(values.length / 2)];
+  });
+  return `#${channels.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
 function updateProgress() {
@@ -279,7 +321,7 @@ async function createShareLink() {
       json: {
         title: $('#collectionTitle').value.trim() || '精选系列',
         mode: state.mode,
-        background: state.mode === 'original' ? ORIGINAL_BACKGROUND : CUTOUT_BACKGROUND,
+        background: state.mode === 'original' ? resolveGalleryBackground(ready) : CUTOUT_BACKGROUND,
         items: ready.map(({ jobId, index, token }) => ({ jobId, index, token }))
       }
     });
