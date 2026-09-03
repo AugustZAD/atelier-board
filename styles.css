@@ -117,8 +117,8 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
 .gallery { columns: 2; column-gap: 4px; }
 .garment-card { display: inline-block; width: 100%; margin: 0 0 8px; break-inside: avoid; vertical-align: top; }
 .preview-section:has(.gallery) { padding-inline: 8px; }
-body[data-mode="original"] .preview-section { background: var(--gallery-background, #fff); }
-body[data-mode="original"] .image-wrap { background-color: var(--item-background, var(--gallery-background, #fff)); background-image: none; }
+body[data-mode="original"] .preview-section { background: var(--gallery-background, #f8f8f8); }
+body[data-mode="original"] .image-wrap { background-color: var(--item-background, var(--gallery-background, #f8f8f8)); background-image: none; }
 .image-wrap { position: relative; min-height: 160px; overflow: hidden; background-color: var(--paper); background-image: linear-gradient(45deg, rgba(255,255,255,.32) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.32) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.32) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.32) 75%); background-position: 0 0, 0 5px, 5px -5px, -5px 0; background-size: 10px 10px; }
 .image-wrap img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity .3s ease; }
 .garment-card.is-ready img { opacity: 1; }

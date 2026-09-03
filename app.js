@@ -1,7 +1,7 @@
 const MAX_FILES = 50;
 const MAX_EDGE = matchMedia('(pointer: coarse)').matches ? 1280 : 1440;
 const SHARE_API = 'https://atelier-board-share.s98081096.workers.dev';
-const ORIGINAL_BACKGROUND = '#ffffff';
+const ORIGINAL_BACKGROUND = '#f8f8f8';
 const CUTOUT_BACKGROUND = '#f3efe8';
 
 const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'original' };
@@ -136,29 +136,10 @@ async function prepareProductImage(file, mode) {
     context.drawImage(bitmap, 0, 0, bitmap.width, sourceHeight, 0, 0, width, height);
     const outputCanvas = mode === 'original' ? trimWhiteSpace(canvas) : canvas;
     return {
-      background: mode === 'original' ? sampleBackground(outputCanvas) : CUTOUT_BACKGROUND,
+      background: mode === 'original' ? ORIGINAL_BACKGROUND : CUTOUT_BACKGROUND,
       blob: await canvasToBlob(outputCanvas, 'image/jpeg', .92)
     };
   } finally { bitmap.close(); }
-}
-
-function sampleBackground(canvas) {
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  const inset = Math.max(1, Math.round(Math.min(canvas.width, canvas.height) * .012));
-  const size = Math.max(1, Math.min(12, inset, canvas.width, canvas.height));
-  const points = [
-    [inset, inset], [canvas.width - inset - size, inset],
-    [inset, canvas.height - inset - size], [canvas.width - inset - size, canvas.height - inset - size]
-  ];
-  const channels = [[], [], []];
-  for (const [x, y] of points) {
-    const pixels = context.getImageData(Math.max(0, x), Math.max(0, y), size, size).data;
-    for (let index = 0; index < pixels.length; index += 4) {
-      channels[0].push(pixels[index]); channels[1].push(pixels[index + 1]); channels[2].push(pixels[index + 2]);
-    }
-  }
-  const rgb = channels.map((values) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)]);
-  return `#${rgb.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
 function trimWhiteSpace(canvas) {
@@ -279,15 +260,7 @@ function updateGallerySurface() {
   previewSection.style.setProperty('--gallery-background', background);
 }
 
-function resolveGalleryBackground(items) {
-  const colors = items.map((item) => item.background).filter((color) => /^#[0-9a-f]{6}$/i.test(color));
-  if (!colors.length) return ORIGINAL_BACKGROUND;
-  const channels = [0, 1, 2].map((channel) => {
-    const values = colors.map((color) => Number.parseInt(color.slice(1 + channel * 2, 3 + channel * 2), 16)).sort((a, b) => a - b);
-    return values[Math.floor(values.length / 2)];
-  });
-  return `#${channels.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
-}
+function resolveGalleryBackground() { return ORIGINAL_BACKGROUND; }
 
 function updateProgress() {
   if (!state.processing) return;
