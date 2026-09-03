@@ -5,8 +5,8 @@ from typing import Annotated
 import modal
 
 APP_NAME = "atelier-board-cutout"
-MODEL_ID = "ZhengPeng7/BiRefNet_lite"
-MODEL_REVISION = "aa62cd87eafb9cc43056d08ef3615a14628b831d"
+MODEL_ID = "ZhengPeng7/BiRefNet"
+MODEL_REVISION = "e2bf8e4460fc8fa32bba5ea4d94b3233d367b0e4"
 MODEL_CACHE = "/models"
 PRODUCTION_BATCH_SIZE = 2
 

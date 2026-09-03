@@ -1,10 +1,9 @@
 const MAX_FILES = 50;
 const MAX_EDGE = matchMedia('(pointer: coarse)').matches ? 1280 : 1440;
 const SHARE_API = 'https://atelier-board-share.s98081096.workers.dev';
-const ORIGINAL_BACKGROUND = '#f8f8f8';
 const CUTOUT_BACKGROUND = '#f3efe8';
 
-const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'original' };
+const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'cutout' };
 const $ = (selector) => document.querySelector(selector);
 const fileInput = $('#fileInput');
 const dropZone = $('#dropZone');
@@ -27,17 +26,6 @@ $('#closeShare').addEventListener('click', () => shareDialog.close());
 $('#copyLink').addEventListener('click', copyShareLink);
 $('#nativeShare').addEventListener('click', nativeShare);
 exportButton.addEventListener('click', createShareLink);
-document.querySelectorAll('input[name="processingMode"]').forEach((input) => input.addEventListener('change', changeMode));
-
-function changeMode(event) {
-  if (state.items.length) {
-    event.preventDefault();
-    document.querySelector(`input[name="processingMode"][value="${state.mode}"]`).checked = true;
-    return toast('清空当前图片后即可切换处理方式');
-  }
-  state.mode = event.target.value;
-  updateModeCopy();
-}
 
 async function addFiles(files) {
   if (state.processing) return toast('请等待当前一批图片处理完成');
@@ -49,7 +37,7 @@ async function addFiles(files) {
   if (!accepted.length) return toast('已经达到 50 张上限');
 
   const batchItems = accepted.map((file) => {
-    const item = { id: crypto.randomUUID(), file, status: 'queued', jobId: '', index: -1, token: '', url: '', background: ORIGINAL_BACKGROUND };
+    const item = { id: crypto.randomUUID(), file, status: 'queued', jobId: '', index: -1, token: '', url: '', background: CUTOUT_BACKGROUND };
     state.items.push(item); createCard(item); return item;
   });
   previewSection.hidden = false;
@@ -67,7 +55,7 @@ async function addFiles(files) {
     batchItems.forEach((item, index) => { item.jobId = job.jobId; item.index = index; item.token = job.token; });
     await runPool(batchItems, 3, async (item) => {
       item.status = 'uploading'; updateCard(item, '正在上传');
-      const prepared = await prepareProductImage(item.file, state.mode);
+      const prepared = await prepareProductImage(item.file);
       item.background = prepared.background;
       updateGallerySurface();
       item.file = null;
@@ -76,7 +64,7 @@ async function addFiles(files) {
       });
       item.status = 'uploaded';
       state.uploaded += 1;
-      updateCard(item, state.mode === 'cutout' ? '等待云端抠图' : '保留原图');
+      updateCard(item, '等待云端抠图');
       updateProgress();
     });
 
@@ -112,7 +100,7 @@ async function pollJob(job, items) {
         image.src = item.url; image.alt = `服装单品 ${state.items.indexOf(item) + 1}`;
         card.classList.add('is-ready');
       }
-      updateCard(item, state.mode === 'cutout' ? '云端已抠图' : '原图白底');
+      updateCard(item, '云端已抠图');
       rendered += 1;
     }
     updateUI();
@@ -122,7 +110,7 @@ async function pollJob(job, items) {
   }
 }
 
-async function prepareProductImage(file, mode) {
+async function prepareProductImage(file) {
   const bitmap = await createImageBitmap(file);
   try {
     const sourceHeight = detectScreenshotCrop(bitmap);
@@ -134,56 +122,11 @@ async function prepareProductImage(file, mode) {
     const context = canvas.getContext('2d');
     context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, height);
     context.drawImage(bitmap, 0, 0, bitmap.width, sourceHeight, 0, 0, width, height);
-    const outputCanvas = mode === 'original' ? trimWhiteSpace(canvas) : canvas;
     return {
-      background: mode === 'original' ? ORIGINAL_BACKGROUND : CUTOUT_BACKGROUND,
-      blob: await canvasToBlob(outputCanvas, 'image/jpeg', .92)
+      background: CUTOUT_BACKGROUND,
+      blob: await canvasToBlob(canvas, 'image/jpeg', .92)
     };
   } finally { bitmap.close(); }
-}
-
-function trimWhiteSpace(canvas) {
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  const { width, height } = canvas;
-  const pixels = context.getImageData(0, 0, width, height).data;
-  const corners = [[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]];
-  const background = corners.reduce((sum, [x, y]) => {
-    const offset = (y * width + x) * 4;
-    return [sum[0] + pixels[offset], sum[1] + pixels[offset + 1], sum[2] + pixels[offset + 2]];
-  }, [0, 0, 0]).map((value) => value / corners.length);
-  const columnHits = new Uint16Array(width);
-  const rowHits = new Uint16Array(height);
-  const thresholdSquared = 13 * 13;
-  for (let y = 0; y < height; y += 2) {
-    for (let x = 0; x < width; x += 2) {
-      const offset = (y * width + x) * 4;
-      const red = pixels[offset] - background[0];
-      const green = pixels[offset + 1] - background[1];
-      const blue = pixels[offset + 2] - background[2];
-      if (red * red + green * green + blue * blue > thresholdSquared) {
-        columnHits[x] += 1; rowHits[y] += 1;
-      }
-    }
-  }
-  const minColumnHits = Math.max(2, Math.round(height / 420));
-  const minRowHits = Math.max(2, Math.round(width / 420));
-  let left = 0; let right = width - 1; let top = 0; let bottom = height - 1;
-  while (left < right && columnHits[left] < minColumnHits) left += 2;
-  while (right > left && columnHits[right - (right % 2)] < minColumnHits) right -= 2;
-  while (top < bottom && rowHits[top] < minRowHits) top += 2;
-  while (bottom > top && rowHits[bottom - (bottom % 2)] < minRowHits) bottom -= 2;
-  const detectedWidth = right - left;
-  const detectedHeight = bottom - top;
-  if (detectedWidth < width * .12 || detectedHeight < height * .12) return canvas;
-  const padding = Math.round(Math.max(detectedWidth, detectedHeight) * .055);
-  left = Math.max(0, left - padding); top = Math.max(0, top - padding);
-  right = Math.min(width, right + padding); bottom = Math.min(height, bottom + padding);
-  const cropped = document.createElement('canvas');
-  cropped.width = right - left; cropped.height = bottom - top;
-  const croppedContext = cropped.getContext('2d');
-  croppedContext.fillStyle = '#ffffff'; croppedContext.fillRect(0, 0, cropped.width, cropped.height);
-  croppedContext.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
-  return cropped;
 }
 
 function detectScreenshotCrop(bitmap) {
@@ -248,7 +191,6 @@ function updateUI() {
   $('#readyCount').textContent = `${ready} 件单品`;
   $('#progress').hidden = !state.processing;
   fileInput.disabled = state.processing;
-  document.querySelectorAll('input[name="processingMode"]').forEach((input) => { input.disabled = state.processing || state.items.length > 0; });
   exportButton.disabled = state.processing || ready === 0;
   [...gallery.children].forEach((card, index) => { card.querySelector('.card-index').textContent = `LOOK ${String(index + 1).padStart(2, '0')}`; });
   updateGallerySurface();
@@ -256,11 +198,8 @@ function updateUI() {
 }
 
 function updateGallerySurface() {
-  const background = state.mode === 'original' ? resolveGalleryBackground(state.items) : CUTOUT_BACKGROUND;
-  previewSection.style.setProperty('--gallery-background', background);
+  previewSection.style.setProperty('--gallery-background', CUTOUT_BACKGROUND);
 }
-
-function resolveGalleryBackground() { return ORIGINAL_BACKGROUND; }
 
 function updateProgress() {
   if (!state.processing) return;
@@ -269,18 +208,18 @@ function updateProgress() {
     const percent = Math.round(state.uploaded / Math.max(1, state.batchTotal) * 35);
     progressBar.style.width = `${Math.max(3, percent)}%`;
     $('#progressText').textContent = `安全上传 ${state.uploaded} / ${state.batchTotal}`;
-    $('#progressDetail').textContent = state.mode === 'cutout' ? '原图将在抠图完成后立即删除' : '只做裁边与压缩，不修改衣服像素';
+    $('#progressDetail').textContent = '原图将在抠图完成后立即删除';
     $('#etaText').textContent = '';
     return;
   }
   const percent = 35 + Math.round(state.completed / Math.max(1, state.batchTotal) * 65);
   progressBar.style.width = `${percent}%`;
-  $('#progressText').textContent = state.mode === 'cutout' ? `L4 云端抠图 ${state.completed} / ${state.batchTotal}` : `原图白底 ${state.completed} / ${state.batchTotal}`;
-  $('#progressDetail').textContent = state.mode === 'cutout' ? '可以留在此页面查看实时结果' : '不启动 GPU，上传完成即可预览';
+  $('#progressText').textContent = `L4 云端抠图 ${state.completed} / ${state.batchTotal}`;
+  $('#progressDetail').textContent = '可以留在此页面查看实时结果';
   if (state.completed > 0 && state.completed < state.batchTotal) {
     const elapsed = performance.now() - state.cloudStartedAt;
     $('#etaText').textContent = `约剩 ${formatDuration(elapsed / state.completed * (state.batchTotal - state.completed))}`;
-  } else $('#etaText').textContent = state.completed ? '即将完成' : (state.mode === 'cutout' ? '正在启动 GPU' : '正在生成画册');
+  } else $('#etaText').textContent = state.completed ? '即将完成' : '正在启动 GPU';
 }
 
 async function createShareLink() {
@@ -294,7 +233,7 @@ async function createShareLink() {
       json: {
         title: $('#collectionTitle').value.trim() || '精选系列',
         mode: state.mode,
-        background: state.mode === 'original' ? resolveGalleryBackground(ready) : CUTOUT_BACKGROUND,
+        background: CUTOUT_BACKGROUND,
         items: ready.map(({ jobId, index, token }) => ({ jobId, index, token }))
       }
     });
@@ -335,16 +274,4 @@ function delay(milliseconds) { return new Promise((resolve) => setTimeout(resolv
 function formatDuration(milliseconds) { const seconds = Math.max(1, Math.round(milliseconds / 1000)); return seconds < 60 ? `${seconds} 秒` : `${Math.ceil(seconds / 60)} 分钟`; }
 function toast(message) { const element = $('#toast'); element.textContent = message; element.classList.add('is-visible'); clearTimeout(toast.timer); toast.timer = setTimeout(() => element.classList.remove('is-visible'), 3200); }
 
-function updateModeCopy() {
-  const original = state.mode === 'original';
-  document.body.dataset.mode = state.mode;
-  $('#serviceBadge').innerHTML = `<i></i> ${original ? '原图白底' : 'L4 云端抠图'}`;
-  $('#modeDescription').textContent = original
-    ? '完整保留衣服和原始白底，只裁掉四周空白，不启动 GPU。'
-    : '识别服装主体并生成透明背景，适合现场照或复杂背景。';
-  $('#processingCopy').innerHTML = original
-    ? '<strong>保留原图白底，不修改衣服像素</strong><br>仅压缩图片并裁去多余空白，处理结果与分享网址保存 30 天。'
-    : '<strong>专用 GPU 统一处理，手机无需运行模型</strong><br>原图经加密上传，抠图成功后立即删除；处理结果与分享网址保存 30 天。';
-}
-
-updateModeCopy();
+document.body.dataset.mode = 'cutout';
