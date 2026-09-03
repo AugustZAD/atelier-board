@@ -1,7 +1,7 @@
 const MAX_FILES = 50;
 const MAX_EDGE = matchMedia('(pointer: coarse)').matches ? 1280 : 1440;
 const SHARE_API = 'https://atelier-board-share.s98081096.workers.dev';
-const CUTOUT_BACKGROUND = '#f3efe8';
+const CUTOUT_BACKGROUND = '#f5f1ea';
 
 const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'cutout' };
 const $ = (selector) => document.querySelector(selector);
