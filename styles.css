@@ -96,9 +96,11 @@ h2 { margin: 0; font-family: var(--serif); font-size: 34px; font-weight: 500; li
 .preview-heading { margin-bottom: 22px; }
 .text-button { padding: 8px 0; background: transparent; border: 0; border-bottom: 1px solid currentColor; font-size: 11px; cursor: pointer; }
 .text-button:focus-visible, .remove-button:focus-visible, .export-button:focus-visible { outline: 2px solid var(--bronze); outline-offset: 3px; }
-.progress { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin: -6px 0 18px; color: #6c645c; font-size: 10px; }
+.progress { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 10px; margin: -6px 0 18px; color: #6c645c; font-size: 10px; }
 .progress-track { height: 2px; overflow: hidden; background: #ddd5cc; }
 .progress-track i { display: block; width: 0; height: 100%; background: var(--ink); transition: width .25s ease; }
+.progress-detail { grid-column: 1; color: #8a8178; }
+.eta-text { grid-column: 2; grid-row: 2; color: var(--bronze); text-align: right; }
 
 .gallery { columns: 2; column-gap: 8px; }
 .garment-card { display: inline-block; width: 100%; margin: 0 0 18px; break-inside: avoid; vertical-align: top; }
@@ -124,6 +126,18 @@ h2 { margin: 0; font-family: var(--serif); font-size: 34px; font-weight: 500; li
 
 .toast { position: fixed; z-index: 20; top: 76px; left: 50%; max-width: calc(100% - 32px); padding: 10px 14px; color: white; background: var(--ink); font-size: 11px; opacity: 0; pointer-events: none; transform: translate(-50%, -8px); transition: opacity .2s ease, transform .2s ease; }
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+.share-dialog { width: min(calc(100% - 24px), 520px); padding: 32px 22px 24px; color: var(--ink); background: var(--white); border: 1px solid var(--line); border-radius: 0; box-shadow: 0 24px 80px rgba(24,21,18,.22); }
+.share-dialog::backdrop { background: rgba(24,21,18,.58); backdrop-filter: blur(3px); }
+.share-dialog h2 { margin-bottom: 14px; font-size: 38px; }
+.dialog-copy { margin: 0 32px 28px 0; color: #6c645d; font-size: 12px; line-height: 1.75; }
+.dialog-close { position: absolute; top: 14px; right: 14px; display: grid; width: 44px; height: 44px; padding: 0; place-items: center; background: transparent; border: 0; cursor: pointer; }
+.dialog-close svg { width: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.5; }
+.share-url-row { display: grid; grid-template-columns: 1fr auto; margin-bottom: 12px; }
+.share-url-row input { min-width: 0; height: 50px; padding: 0 12px; color: #625b54; background: var(--paper); border: 1px solid var(--line); border-right: 0; border-radius: 0; font-size: 11px; outline: none; }
+.share-url-row button { min-width: 70px; color: white; background: var(--ink); border: 0; cursor: pointer; }
+.dialog-primary { width: 100%; min-height: 52px; color: white; background: var(--bronze); border: 0; font-weight: 500; cursor: pointer; }
+.dialog-close:focus-visible, .share-url-row button:focus-visible, .dialog-primary:focus-visible { outline: 2px solid var(--bronze); outline-offset: 3px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 

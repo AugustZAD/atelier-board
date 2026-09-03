@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "atelier-board-share",
+  "main": "worker/src/index.ts",
+  "account_id": "b488918bc7219ea254359bc5cc9611a1",
+  "compatibility_date": "2026-09-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "vars": {
+    "ALLOWED_ORIGIN": "https://augustzad.github.io",
+    "MODAL_ENDPOINT": "https://s98081096--atelier-board-cutout-start.modal.run"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "COLLECTIONS",
+      "id": "f920b46671d54e99b15e30cde32bcd91"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1
+  }
+}

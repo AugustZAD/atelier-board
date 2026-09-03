@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f3efe8" />
-    <meta name="description" content="在浏览器中完成服装抠图、瀑布流排版，并导出可分享的单文件 HTML。" />
+    <meta name="description" content="上传服装商品图，使用云端 AI 自动抠图并生成可分享的双列瀑布流画册。" />
     <title>Atelier Board — 服装图集</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,7 +14,7 @@
   <body>
     <header class="masthead">
       <a class="wordmark" href="#top" aria-label="Atelier Board 首页">ATELIER BOARD</a>
-      <span class="privacy"><i></i> 本地处理</span>
+      <span class="privacy"><i></i> L4 云端抠图</span>
     </header>
 
     <main id="top">
@@ -37,17 +37,17 @@
         <input id="collectionTitle" class="title-input" type="text" maxlength="40" value="秋冬精选系列" placeholder="例如：秋冬精选系列" />
 
         <label id="dropZone" class="drop-zone" for="fileInput">
-          <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+          <input id="fileInput" type="file" accept="image/*" multiple />
           <span class="upload-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24" role="img"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>
           </span>
           <strong>选择或拖入图片</strong>
-          <small>支持 JPG、PNG、WebP，最多 30 张</small>
+          <small>可从手机相册多选，最多 30 张</small>
         </label>
 
         <div class="processing-note">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s8-3.4 8-9.5V5l-8-3-8 3v6.5C4 17.6 12 21 12 21Z" /><path d="m9 12 2 2 4-4" /></svg>
-          <p><strong>图片不会离开你的设备</strong><br />抠图、排版和导出均在当前浏览器内完成。</p>
+          <p><strong>专用 GPU 统一处理，手机无需运行模型</strong><br />原图经加密上传，抠图成功后立即删除；处理结果与分享网址保存 30 天。</p>
         </div>
       </section>
 
@@ -61,7 +61,9 @@
         </div>
         <div id="progress" class="progress" role="status" aria-live="polite" hidden>
           <span class="progress-track"><i id="progressBar"></i></span>
-          <span id="progressText">正在处理图片…</span>
+          <span id="progressText">正在安全上传…</span>
+          <span id="progressDetail" class="progress-detail">上传后由 L4 GPU 统一处理</span>
+          <span id="etaText" class="eta-text"></span>
         </div>
         <div id="gallery" class="gallery"></div>
       </section>
@@ -73,7 +75,7 @@
         <strong id="readyCount">0 件单品</strong>
       </div>
       <button id="exportButton" class="export-button" type="button">
-        <span>生成并分享</span>
+        <span>生成分享链接</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" /></svg>
       </button>
     </footer>
@@ -91,7 +93,22 @@
       </article>
     </template>
 
+    <dialog id="shareDialog" class="share-dialog">
+      <button id="closeShare" class="dialog-close" type="button" aria-label="关闭分享窗口">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
+      </button>
+      <p class="step">03 / SHARE</p>
+      <h2>你的图集已上线</h2>
+      <p class="dialog-copy">复制网址发给任何人，对方打开即可浏览。链接将在 30 天后自动失效。</p>
+      <label class="field-label" for="shareUrl">分享网址</label>
+      <div class="share-url-row">
+        <input id="shareUrl" type="url" readonly />
+        <button id="copyLink" type="button">复制</button>
+      </div>
+      <button id="nativeShare" class="dialog-primary" type="button">分享给其他人</button>
+    </dialog>
+
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="app.js" defer></script>
+    <script src="app.js" type="module"></script>
   </body>
 </html>

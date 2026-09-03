@@ -1,0 +1,17 @@
+{
+  "name": "atelier-board",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit && node --check app.js && python3 -m py_compile modal_app.py",
+    "cf:types": "wrangler types",
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy --minify"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "latest",
+    "typescript": "latest",
+    "wrangler": "latest"
+  }
+}
