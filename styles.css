@@ -112,8 +112,9 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
 .progress-detail { grid-column: 1; color: #8a8178; }
 .eta-text { grid-column: 2; grid-row: 2; color: var(--bronze); text-align: right; }
 
-.gallery { columns: 2; column-gap: 4px; }
-.garment-card { display: inline-block; width: 100%; margin: 0 0 8px; break-inside: avoid; vertical-align: top; }
+.gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; align-items: start; }
+.gallery-column { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.garment-card { width: 100%; margin: 0; }
 .preview-section:has(.gallery) { padding-inline: 8px; }
 .image-wrap { position: relative; min-height: 160px; overflow: hidden; background-color: var(--paper); background-image: linear-gradient(45deg, rgba(255,255,255,.32) 25%, transparent 25%), linear-gradient(-45deg, rgba(255,255,255,.32) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(255,255,255,.32) 75%), linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.32) 75%); background-position: 0 0, 0 5px, 5px -5px, -5px 0; background-size: 10px 10px; }
 .image-wrap img { display: block; width: 100%; height: auto; opacity: 0; transition: opacity .3s ease; }
@@ -156,7 +157,8 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
   .masthead { padding-inline: 32px; }
   .hero { padding: 96px 24px 84px; }
   .studio, .preview-section { padding: 40px 24px; }
-  .gallery { column-gap: 6px; }
+  .gallery { gap: 6px; }
+  .gallery-column { gap: 10px; }
   .action-bar { left: 50%; width: min(100%, 760px); transform: translateX(-50%); }
 }
 

@@ -161,7 +161,30 @@ function createCard(item) {
   card.dataset.id = item.id;
   card.style.setProperty('--item-background', item.background);
   card.querySelector('.remove-button').addEventListener('click', () => removeItem(item.id));
-  gallery.appendChild(fragment);
+  const columns = getGalleryColumns();
+  columns[(state.items.length - 1) % columns.length].appendChild(fragment);
+}
+
+function getGalleryColumns() {
+  let columns = [...gallery.querySelectorAll('.gallery-column')];
+  if (columns.length === 2) return columns;
+  gallery.replaceChildren();
+  columns = [0, 1].map((index) => {
+    const column = document.createElement('div');
+    column.className = 'gallery-column';
+    column.dataset.column = String(index);
+    gallery.appendChild(column);
+    return column;
+  });
+  return columns;
+}
+
+function rebalanceGallery() {
+  const columns = getGalleryColumns();
+  state.items.forEach((item, index) => {
+    const card = gallery.querySelector(`[data-id="${item.id}"]`);
+    if (card) columns[index % columns.length].appendChild(card);
+  });
 }
 
 function updateCard(item, label) {
@@ -176,13 +199,14 @@ function removeItem(id) {
   if (state.processing) return toast('处理完成后即可移除图片');
   state.items = state.items.filter((item) => item.id !== id);
   gallery.querySelector(`[data-id="${id}"]`)?.remove();
+  rebalanceGallery();
   if (!state.items.length) { previewSection.hidden = true; actionBar.hidden = true; }
   updateUI();
 }
 
 function clearAll() {
   if (state.processing) return toast('处理完成后即可清除');
-  state.items = []; gallery.replaceChildren(); previewSection.hidden = true; actionBar.hidden = true; updateUI();
+  state.items = []; gallery.replaceChildren(); getGalleryColumns(); previewSection.hidden = true; actionBar.hidden = true; updateUI();
 }
 
 function updateUI() {
@@ -192,7 +216,10 @@ function updateUI() {
   $('#progress').hidden = !state.processing;
   fileInput.disabled = state.processing;
   exportButton.disabled = state.processing || ready === 0;
-  [...gallery.children].forEach((card, index) => { card.querySelector('.card-index').textContent = `LOOK ${String(index + 1).padStart(2, '0')}`; });
+  state.items.forEach((item, index) => {
+    const card = gallery.querySelector(`[data-id="${item.id}"]`);
+    if (card) card.querySelector('.card-index').textContent = `LOOK ${String(index + 1).padStart(2, '0')}`;
+  });
   updateGallerySurface();
   updateProgress();
 }
