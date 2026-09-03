@@ -14,7 +14,10 @@
   <body>
     <header class="masthead">
       <a class="wordmark" href="#top" aria-label="Atelier Board 首页">ATELIER BOARD</a>
-      <span id="serviceBadge" class="privacy"><i></i> L4 AI CUTOUT</span>
+      <div class="masthead-actions">
+        <span id="serviceBadge" class="privacy"><i></i> L4 AI CUTOUT</span>
+        <button id="historyButton" class="history-button" type="button">HISTORY <span id="historyCount">0</span></button>
+      </div>
     </header>
 
     <main id="top">
@@ -110,6 +113,33 @@
       </div>
       <button id="nativeShare" class="dialog-primary" type="button">分享给其他人</button>
     </dialog>
+
+    <dialog id="historyDialog" class="history-dialog" aria-labelledby="history-title">
+      <button id="closeHistory" class="dialog-close" type="button" aria-label="关闭历史记录">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
+      </button>
+      <p class="step">LOCAL ARCHIVE</p>
+      <h2 id="history-title">Saved Collections.</h2>
+      <p class="dialog-copy">记录仅保存在当前浏览器；分享页面仍将在创建 30 天后失效。</p>
+      <label class="field-label" for="historySearch">搜索图集</label>
+      <input id="historySearch" class="history-search" type="search" autocomplete="off" placeholder="输入图集名称" />
+      <div id="historyList" class="history-list"></div>
+      <p id="historyEmpty" class="history-empty">还没有保存的图集。生成第一个分享网址后会自动出现在这里。</p>
+    </dialog>
+
+    <template id="historyTemplate">
+      <article class="history-item">
+        <a class="history-main" target="_blank" rel="noopener noreferrer">
+          <strong class="history-title"></strong>
+          <span class="history-meta"></span>
+        </a>
+        <div class="history-actions">
+          <button class="history-open" type="button">打开</button>
+          <button class="history-copy" type="button">复制</button>
+          <button class="history-delete" type="button">删除</button>
+        </div>
+      </article>
+    </template>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script src="app.js" type="module"></script>
