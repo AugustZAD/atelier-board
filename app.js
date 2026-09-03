@@ -70,6 +70,7 @@ async function addFiles(files) {
 
     state.phase = 'cloud';
     state.cloudStartedAt = performance.now();
+    updateProgress();
     await api(`/api/jobs/${job.jobId}/start`, { method: 'POST', token: job.token, json: {} });
     await pollJob(job, batchItems);
   } catch (error) {
@@ -231,16 +232,21 @@ function updateGallerySurface() {
 function updateProgress() {
   if (!state.processing) return;
   const progressBar = $('#progressBar');
+  const progressTrack = $('#progressTrack');
   if (state.phase === 'upload') {
-    const percent = Math.round(state.uploaded / Math.max(1, state.batchTotal) * 35);
-    progressBar.style.width = `${Math.max(3, percent)}%`;
+    const percent = Math.round(state.uploaded / Math.max(1, state.batchTotal) * 100);
+    progressBar.style.width = `${percent}%`;
+    progressTrack.setAttribute('aria-valuenow', String(percent));
+    progressTrack.setAttribute('aria-valuetext', `已上传 ${state.uploaded} / ${state.batchTotal}`);
     $('#progressText').textContent = `安全上传 ${state.uploaded} / ${state.batchTotal}`;
     $('#progressDetail').textContent = '原图将在抠图完成后立即删除';
     $('#etaText').textContent = '';
     return;
   }
-  const percent = 35 + Math.round(state.completed / Math.max(1, state.batchTotal) * 65);
+  const percent = Math.round(state.completed / Math.max(1, state.batchTotal) * 100);
   progressBar.style.width = `${percent}%`;
+  progressTrack.setAttribute('aria-valuenow', String(percent));
+  progressTrack.setAttribute('aria-valuetext', `已抠图 ${state.completed} / ${state.batchTotal}`);
   $('#progressText').textContent = `L4 云端抠图 ${state.completed} / ${state.batchTotal}`;
   $('#progressDetail').textContent = '可以留在此页面查看实时结果';
   if (state.completed > 0 && state.completed < state.batchTotal) {

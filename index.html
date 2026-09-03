@@ -60,7 +60,7 @@
           <button id="clearButton" class="text-button" type="button">全部清除</button>
         </div>
         <div id="progress" class="progress" role="status" aria-live="polite" hidden>
-          <span class="progress-track"><i id="progressBar"></i></span>
+          <span id="progressTrack" class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="progressBar"></i></span>
           <span id="progressText">正在安全上传…</span>
           <span id="progressDetail" class="progress-detail">正在准备图片</span>
           <span id="etaText" class="eta-text"></span>
