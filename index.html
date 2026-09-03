@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3efe8" />
+    <meta name="description" content="在浏览器中完成服装抠图、瀑布流排版，并导出可分享的单文件 HTML。" />
+    <title>Atelier Board — 服装图集</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Noto+Sans+SC:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="wordmark" href="#top" aria-label="Atelier Board 首页">ATELIER BOARD</a>
+      <span class="privacy"><i></i> 本地处理</span>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <p class="eyebrow">PRIVATE COLLECTION BUILDER</p>
+        <h1 id="hero-title">把散落的单品，<br />整理成一册。</h1>
+        <p class="intro">上传商品截图，自动保留服装主体，以双列瀑布流生成一份可直接分享的独立网页。</p>
+      </section>
+
+      <section class="studio" aria-labelledby="studio-title">
+        <div class="section-heading">
+          <div>
+            <p class="step">01 / CREATE</p>
+            <h2 id="studio-title">创建图集</h2>
+          </div>
+          <span id="itemCount" class="count">0 / 30</span>
+        </div>
+
+        <label class="field-label" for="collectionTitle">图集名称</label>
+        <input id="collectionTitle" class="title-input" type="text" maxlength="40" value="秋冬精选系列" placeholder="例如：秋冬精选系列" />
+
+        <label id="dropZone" class="drop-zone" for="fileInput">
+          <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+          <span class="upload-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>
+          </span>
+          <strong>选择或拖入图片</strong>
+          <small>支持 JPG、PNG、WebP，最多 30 张</small>
+        </label>
+
+        <div class="processing-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s8-3.4 8-9.5V5l-8-3-8 3v6.5C4 17.6 12 21 12 21Z" /><path d="m9 12 2 2 4-4" /></svg>
+          <p><strong>图片不会离开你的设备</strong><br />抠图、排版和导出均在当前浏览器内完成。</p>
+        </div>
+      </section>
+
+      <section id="previewSection" class="preview-section" hidden aria-labelledby="preview-title">
+        <div class="section-heading preview-heading">
+          <div>
+            <p class="step">02 / CURATE</p>
+            <h2 id="preview-title">图集预览</h2>
+          </div>
+          <button id="clearButton" class="text-button" type="button">全部清除</button>
+        </div>
+        <div id="progress" class="progress" role="status" aria-live="polite" hidden>
+          <span class="progress-track"><i id="progressBar"></i></span>
+          <span id="progressText">正在处理图片…</span>
+        </div>
+        <div id="gallery" class="gallery"></div>
+      </section>
+    </main>
+
+    <footer id="actionBar" class="action-bar" hidden>
+      <div>
+        <small>READY TO SHARE</small>
+        <strong id="readyCount">0 件单品</strong>
+      </div>
+      <button id="exportButton" class="export-button" type="button">
+        <span>生成并分享</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" /></svg>
+      </button>
+    </footer>
+
+    <template id="cardTemplate">
+      <article class="garment-card">
+        <div class="image-wrap">
+          <span class="card-loader"></span>
+          <img alt="" />
+          <button class="remove-button" type="button" aria-label="移除图片">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
+          </button>
+        </div>
+        <div class="card-meta"><span class="card-index"></span><span class="card-state">处理中</span></div>
+      </article>
+    </template>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js" defer></script>
+  </body>
+</html>
