@@ -1,5 +1,5 @@
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
-const MAX_IMAGES = 30;
+const MAX_IMAGES = 50;
 const INPUT_TTL = 24 * 60 * 60;
 const OUTPUT_TTL = 31 * 24 * 60 * 60;
 const COLLECTION_TTL = 30 * 24 * 60 * 60;
@@ -13,8 +13,9 @@ const JOB_IMAGE_PATH = new RegExp(`^/api/jobs/(${JOB_ID})/images/(\\d{1,2})$`);
 const INTERNAL_IMAGE_PATH = new RegExp(`^/api/internal/jobs/(${JOB_ID})/images/(\\d{1,2})$`);
 const INTERNAL_STATUS_PATH = new RegExp(`^/api/internal/jobs/(${JOB_ID})/status$`);
 
+type ProcessingMode = 'original' | 'cutout';
 type JobStatus = 'uploading' | 'queued' | 'processing' | 'complete' | 'error';
-type JobRecord = { count: number; completed: number; createdAt: string; error?: string; status: JobStatus; tokenHash: string };
+type JobRecord = { count: number; completed: number; createdAt: string; error?: string; mode?: ProcessingMode; status: JobStatus; tokenHash: string };
 
 export default {
   async fetch(request, env): Promise<Response> {
@@ -52,9 +53,10 @@ export default {
 async function createJob(request: Request, env: Env): Promise<Response> {
   const cors = corsFor(request, env);
   if (!cors) return json({ error: 'Origin not allowed' }, 403);
-  const body = await readJson<{ count?: number }>(request);
+  const body = await readJson<{ count?: number; mode?: ProcessingMode }>(request);
   const count = Number(body.count);
-  if (!Number.isInteger(count) || count < 1 || count > MAX_IMAGES) return json({ error: '图片数量必须在 1–30 之间' }, 400, cors);
+  if (!Number.isInteger(count) || count < 1 || count > MAX_IMAGES) return json({ error: '图片数量必须在 1–50 之间' }, 400, cors);
+  const mode: ProcessingMode = body.mode === 'cutout' ? 'cutout' : 'original';
   const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
   const rateKey = await makeRateKey(clientIp);
   const used = Number(await env.COLLECTIONS.get(rateKey) || 0);
@@ -62,7 +64,7 @@ async function createJob(request: Request, env: Env): Promise<Response> {
   await env.COLLECTIONS.put(rateKey, String(used + 1), { expirationTtl: 3600 });
   const id = randomId();
   const token = `${randomId()}${randomId()}`;
-  const record: JobRecord = { count, completed: 0, createdAt: new Date().toISOString(), status: 'uploading', tokenHash: await sha256(token) };
+  const record: JobRecord = { count, completed: 0, createdAt: new Date().toISOString(), mode, status: 'uploading', tokenHash: await sha256(token) };
   await putJob(env, id, record);
   return json({ jobId: id, token }, 201, cors);
 }
@@ -76,7 +78,8 @@ async function uploadImage(request: Request, env: Env, jobId: string, index: num
   const contentType = request.headers.get('Content-Type') || '';
   const length = Number(request.headers.get('Content-Length'));
   if (!contentType.startsWith('image/') || !Number.isFinite(length) || length < 1 || length > MAX_IMAGE_BYTES || !request.body) return json({ error: '单张图片必须小于 6 MB' }, 413, cors);
-  await env.COLLECTIONS.put(inputKey(jobId, index), request.body, { expirationTtl: INPUT_TTL, metadata: { contentType, bytes: length } });
+  const key = job.mode === 'original' ? outputKey(jobId, index) : inputKey(jobId, index);
+  await env.COLLECTIONS.put(key, request.body, { expirationTtl: job.mode === 'original' ? OUTPUT_TTL : INPUT_TTL, metadata: { contentType, bytes: length } });
   return new Response(null, { status: 204, headers: cors });
 }
 
@@ -86,6 +89,10 @@ async function startJob(request: Request, env: Env, jobId: string, serviceOrigin
   const job = await authorizedJob(request, env, jobId);
   if (!job) return json({ error: '任务无效或已失效' }, 401, cors);
   if (job.status !== 'uploading') return json({ error: '任务已经开始' }, 409, cors);
+  if (job.mode === 'original') {
+    job.status = 'complete'; job.completed = job.count; await putJob(env, jobId, job);
+    return json({ status: job.status }, 202, cors);
+  }
   for (let index = 0; index < job.count; index += 1) {
     if (!await env.COLLECTIONS.get(inputKey(jobId, index), { type: 'stream' })) return json({ error: `缺少第 ${index + 1} 张图片` }, 409, cors);
   }
@@ -147,9 +154,9 @@ async function updateJobStatus(request: Request, env: Env, jobId: string): Promi
 async function createCollection(request: Request, env: Env, serviceOrigin: string): Promise<Response> {
   const cors = corsFor(request, env);
   if (!cors) return json({ error: 'Origin not allowed' }, 403);
-  const body = await readJson<{ items?: Array<{ index: number; jobId: string; token: string }>; title?: string }>(request);
+  const body = await readJson<{ background?: string; items?: Array<{ index: number; jobId: string; token: string }>; mode?: ProcessingMode; title?: string }>(request);
   const items = body.items || [];
-  if (!items.length || items.length > MAX_IMAGES) return json({ error: '图集需要 1–30 张图片' }, 400, cors);
+  if (!items.length || items.length > MAX_IMAGES) return json({ error: '图集需要 1–50 张图片' }, 400, cors);
   const authorizedJobs = new Set<string>();
   for (const item of items) {
     const job = await getJobRecord(env, item.jobId);
@@ -158,21 +165,22 @@ async function createCollection(request: Request, env: Env, serviceOrigin: strin
     if (!await env.COLLECTIONS.get(outputKey(item.jobId, item.index), { type: 'stream' })) return json({ error: '图片尚未处理完成' }, 409, cors);
   }
   const id = randomId();
-  const manifest = { createdAt: new Date().toISOString(), items: items.map(({ jobId, index }) => ({ jobId, index })), title: String(body.title || '精选系列').slice(0, 40) };
+  const background = /^#[0-9a-f]{6}$/i.test(body.background || '') ? body.background! : '#f3efe8';
+  const manifest = { background, createdAt: new Date().toISOString(), items: items.map(({ jobId, index }) => ({ jobId, index })), mode: body.mode === 'original' ? 'original' : 'cutout', title: String(body.title || '精选系列').slice(0, 40) };
   await env.COLLECTIONS.put(`collection:${id}`, JSON.stringify(manifest), { expirationTtl: COLLECTION_TTL });
   return json({ expiresAt: new Date(Date.now() + COLLECTION_TTL * 1000).toISOString(), url: `${serviceOrigin}/c/${id}` }, 201, cors);
 }
 
 async function getCollection(id: string, env: Env, serviceOrigin: string): Promise<Response> {
-  const manifest = await env.COLLECTIONS.get<{ createdAt: string; items: Array<{ index: number; jobId: string }>; title: string }>(`collection:${id}`, 'json');
+  const manifest = await env.COLLECTIONS.get<{ background?: string; createdAt: string; items: Array<{ index: number; jobId: string }>; mode?: ProcessingMode; title: string }>(`collection:${id}`, 'json');
   if (!manifest) return new Response(notFoundPage(), { status: 404, headers: htmlHeaders('no-store') });
   return new Response(collectionPage(manifest, serviceOrigin), { headers: htmlHeaders('public, max-age=60') });
 }
 
 async function getMedia(env: Env, jobId: string, index: number): Promise<Response> {
-  const object = await env.COLLECTIONS.get(outputKey(jobId, index), { type: 'stream', cacheTtl: 3600 });
-  if (!object) return new Response(null, { status: 404 });
-  return new Response(object, { headers: { 'Cache-Control': 'public, max-age=86400', 'Content-Type': 'image/webp', 'X-Content-Type-Options': 'nosniff' } });
+  const object = await env.COLLECTIONS.getWithMetadata<{ contentType?: string }>(outputKey(jobId, index), { type: 'stream', cacheTtl: 3600 });
+  if (!object.value) return new Response(null, { status: 404 });
+  return new Response(object.value, { headers: { 'Cache-Control': 'public, max-age=86400', 'Content-Type': object.metadata?.contentType || 'image/webp', 'X-Content-Type-Options': 'nosniff' } });
 }
 
 async function authorizedJob(request: Request, env: Env, jobId: string): Promise<JobRecord | null> {
@@ -197,9 +205,10 @@ function randomId(): string { return crypto.randomUUID().replaceAll('-', ''); }
 async function makeRateKey(ip: string): Promise<string> { return `rate:${await sha256(`${ip}:${Math.floor(Date.now() / 3_600_000)}`)}`; }
 async function sha256(value: string): Promise<string> { const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))); return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join(''); }
 
-function collectionPage(manifest: { createdAt: string; items: Array<{ index: number; jobId: string }>; title: string }, origin: string): string {
+function collectionPage(manifest: { background?: string; createdAt: string; items: Array<{ index: number; jobId: string }>; mode?: ProcessingMode; title: string }, origin: string): string {
   const cards = manifest.items.map((item, index) => `<figure><img src="${origin}/media/${item.jobId}/${item.index}" alt="服装单品 ${index + 1}" loading="lazy"><figcaption>LOOK ${String(index + 1).padStart(2, '0')}</figcaption></figure>`).join('');
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f3efe8"><meta name="robots" content="noindex,nofollow"><title>${escapeHtml(manifest.title)}</title><style>*{box-sizing:border-box}body{margin:0;color:#181512;background:#f3efe8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}header{padding:48px 18px 28px;border-bottom:1px solid rgba(24,21,18,.16)}small{display:block;margin-bottom:12px;color:#7a5b3a;font-size:9px;letter-spacing:.2em}h1{max-width:650px;margin:0;font-family:Georgia,serif;font-size:clamp(42px,12vw,72px);font-weight:400;line-height:.94;letter-spacing:-.04em}.summary{margin:18px 0 0;color:#6b645d;font-size:11px}.gallery{max-width:760px;margin:auto;padding:12px;columns:2;column-gap:8px}figure{display:inline-block;width:100%;margin:0 0 18px;break-inside:avoid}img{display:block;width:100%;height:auto;background:#e8e1d7}figcaption{padding-top:7px;color:#716960;font-family:Georgia,serif;font-size:9px;letter-spacing:.12em}footer{padding:36px 18px 48px;border-top:1px solid rgba(24,21,18,.16);color:#726a62;font-family:Georgia,serif;font-size:11px;text-align:center;letter-spacing:.14em}@media(min-width:700px){header{padding:72px max(24px,calc((100vw - 720px)/2)) 42px}.gallery{column-gap:14px;padding-top:18px}}</style></head><body><header><small>PRIVATE COLLECTION</small><h1>${escapeHtml(manifest.title)}</h1><p class="summary">${manifest.items.length} 件单品 · ${new Date(manifest.createdAt).toLocaleDateString('zh-CN')}</p></header><main class="gallery">${cards}</main><footer>CURATED COLLECTION</footer></body></html>`;
+  const background = /^#[0-9a-f]{6}$/i.test(manifest.background || '') ? manifest.background! : '#f3efe8';
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="${background}"><meta name="robots" content="noindex,nofollow"><title>${escapeHtml(manifest.title)}</title><style>*{box-sizing:border-box}body{margin:0;color:#181512;background:${background};font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}header{padding:48px 18px 28px;border-bottom:1px solid rgba(24,21,18,.16)}small{display:block;margin-bottom:12px;color:#7a5b3a;font-size:9px;letter-spacing:.2em}h1{max-width:650px;margin:0;font-family:Georgia,serif;font-size:clamp(42px,12vw,72px);font-weight:400;line-height:.94;letter-spacing:-.04em}.summary{margin:18px 0 0;color:#6b645d;font-size:11px}.gallery{max-width:760px;margin:auto;padding:12px;columns:2;column-gap:8px}figure{display:inline-block;width:100%;margin:0 0 18px;break-inside:avoid}img{display:block;width:100%;height:auto;background:${background}}figcaption{padding-top:7px;color:#716960;font-family:Georgia,serif;font-size:9px;letter-spacing:.12em}footer{padding:36px 18px 48px;border-top:1px solid rgba(24,21,18,.16);color:#726a62;font-family:Georgia,serif;font-size:11px;text-align:center;letter-spacing:.14em}@media(min-width:700px){header{padding:72px max(24px,calc((100vw - 720px)/2)) 42px}.gallery{column-gap:14px;padding-top:18px}}</style></head><body><header><small>PRIVATE COLLECTION</small><h1>${escapeHtml(manifest.title)}</h1><p class="summary">${manifest.items.length} 件单品 · ${new Date(manifest.createdAt).toLocaleDateString('zh-CN')}</p></header><main class="gallery">${cards}</main><footer>CURATED COLLECTION</footer></body></html>`;
 }
 function htmlHeaders(cacheControl: string): Headers { return new Headers({ 'Cache-Control': cacheControl, 'Content-Security-Policy': "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'", 'Content-Type': 'text/html;charset=utf-8', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'X-Robots-Tag': 'noindex, nofollow' }); }
 function json(body: Record<string, unknown>, status: number, extraHeaders?: Headers | null): Response { const headers = new Headers(extraHeaders || undefined); headers.set('Content-Type', 'application/json;charset=utf-8'); headers.set('X-Content-Type-Options', 'nosniff'); return Response.json(body, { status, headers }); }

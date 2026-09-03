@@ -197,7 +197,7 @@ def web_app():
 
     class JobRequest(BaseModel):
         api_base: str
-        count: int = Field(ge=1, le=30)
+        count: int = Field(ge=1, le=50)
         job_id: str = Field(pattern=r"^[0-9a-f]{32}$")
         job_token: str = Field(min_length=64, max_length=128)
 

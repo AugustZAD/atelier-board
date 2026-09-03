@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f3efe8" />
-    <meta name="description" content="上传服装商品图，使用云端 AI 自动抠图并生成可分享的双列瀑布流画册。" />
+    <meta name="description" content="上传服装商品图，统一图片背景并生成可分享的双列瀑布流画册。" />
     <title>Atelier Board — 服装图集</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,14 +14,14 @@
   <body>
     <header class="masthead">
       <a class="wordmark" href="#top" aria-label="Atelier Board 首页">ATELIER BOARD</a>
-      <span class="privacy"><i></i> L4 云端抠图</span>
+      <span id="serviceBadge" class="privacy"><i></i> 原图同色实验</span>
     </header>
 
     <main id="top">
       <section class="hero" aria-labelledby="hero-title">
         <p class="eyebrow">PRIVATE COLLECTION BUILDER</p>
         <h1 id="hero-title">把散落的单品，<br />整理成一册。</h1>
-        <p class="intro">上传商品截图，自动保留服装主体，以双列瀑布流生成一份可直接分享的独立网页。</p>
+        <p class="intro">上传商品截图，统一图片与画册底色，以双列瀑布流生成一份可直接分享的独立网页。</p>
       </section>
 
       <section class="studio" aria-labelledby="studio-title">
@@ -30,11 +30,24 @@
             <p class="step">01 / CREATE</p>
             <h2 id="studio-title">创建图集</h2>
           </div>
-          <span id="itemCount" class="count">0 / 30</span>
+          <span id="itemCount" class="count">0 / 50</span>
         </div>
 
         <label class="field-label" for="collectionTitle">图集名称</label>
         <input id="collectionTitle" class="title-input" type="text" maxlength="40" value="秋冬精选系列" placeholder="例如：秋冬精选系列" />
+
+        <fieldset class="mode-picker">
+          <legend class="field-label">图片处理方式</legend>
+          <label class="mode-option">
+            <input type="radio" name="processingMode" value="original" checked />
+            <span><strong>原图同色</strong><small>不抠图 · 最快</small></span>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="processingMode" value="cutout" />
+            <span><strong>AI 抠图</strong><small>复杂背景适用</small></span>
+          </label>
+          <p id="modeDescription" class="mode-description">保留商品原图，只将四周纯色背景融入画册底色，不启动 GPU。</p>
+        </fieldset>
 
         <label id="dropZone" class="drop-zone" for="fileInput">
           <input id="fileInput" type="file" accept="image/*" multiple />
@@ -42,12 +55,12 @@
             <svg viewBox="0 0 24 24" role="img"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></svg>
           </span>
           <strong>选择或拖入图片</strong>
-          <small>可从手机相册多选，最多 30 张</small>
+          <small>可从手机相册多选，最多 50 张</small>
         </label>
 
         <div class="processing-note">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s8-3.4 8-9.5V5l-8-3-8 3v6.5C4 17.6 12 21 12 21Z" /><path d="m9 12 2 2 4-4" /></svg>
-          <p><strong>专用 GPU 统一处理，手机无需运行模型</strong><br />原图经加密上传，抠图成功后立即删除；处理结果与分享网址保存 30 天。</p>
+          <p id="processingCopy"><strong>极速同色处理，手机无需运行模型</strong><br />图片会压缩并统一底色，处理结果与分享网址保存 30 天。</p>
         </div>
       </section>
 
@@ -62,7 +75,7 @@
         <div id="progress" class="progress" role="status" aria-live="polite" hidden>
           <span class="progress-track"><i id="progressBar"></i></span>
           <span id="progressText">正在安全上传…</span>
-          <span id="progressDetail" class="progress-detail">上传后由 L4 GPU 统一处理</span>
+          <span id="progressDetail" class="progress-detail">正在准备图片</span>
           <span id="etaText" class="eta-text"></span>
         </div>
         <div id="gallery" class="gallery"></div>
