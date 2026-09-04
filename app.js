@@ -8,7 +8,7 @@ const HISTORY_LIMIT = 100;
 const EXPORT_MAX_PIXELS = matchMedia('(pointer: coarse)').matches ? 13_500_000 : 24_000_000;
 const EXPORT_MAX_HEIGHT = matchMedia('(pointer: coarse)').matches ? 15_500 : 24_000;
 
-const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'cutout', activeJob: null, recovered: false };
+const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'cutout', activeJob: null, recovered: false, operation: 'batch' };
 const $ = (selector) => document.querySelector(selector);
 const fileInput = $('#fileInput');
 const dropZone = $('#dropZone');
@@ -58,6 +58,7 @@ async function addFiles(files) {
   actionBar.hidden = false;
   fileInput.value = '';
   state.processing = true;
+  state.operation = 'batch';
   state.phase = 'upload';
   state.batchTotal = accepted.length;
   state.uploaded = 0;
@@ -147,6 +148,8 @@ function renderReadyItem(item, url = item.url) {
     image.src = item.url;
     image.alt = `服装单品 ${state.items.indexOf(item) + 1}`;
     card.classList.add('is-ready');
+    card.classList.remove('is-retrying');
+    card.setAttribute('aria-busy', 'false');
   }
   updateCard(item, '云端已抠图');
 }
@@ -185,6 +188,17 @@ function createCard(item) {
   card.dataset.id = item.id;
   card.style.setProperty('--item-background', item.background);
   card.querySelector('.remove-button').addEventListener('click', () => removeItem(item.id));
+  const retryButton = card.querySelector('.retry-button');
+  const retryInput = card.querySelector('.retry-input');
+  retryButton.addEventListener('click', () => {
+    if (state.processing) return toast('请等待当前任务完成');
+    retryInput.click();
+  });
+  retryInput.addEventListener('change', () => {
+    const [file] = retryInput.files;
+    retryInput.value = '';
+    if (file) retryCutout(item, file);
+  });
   const columns = getGalleryColumns();
   columns[Math.max(0, state.items.indexOf(item)) % columns.length].appendChild(fragment);
 }
@@ -217,6 +231,84 @@ function updateCard(item, label) {
   card.querySelector('.card-state').textContent = label;
   card.style.setProperty('--item-background', item.background);
   card.classList.toggle('is-error', item.status === 'error');
+  card.classList.toggle('is-retrying', item.status === 'retrying');
+  card.setAttribute('aria-busy', item.status === 'retrying' || item.status === 'uploading' ? 'true' : 'false');
+}
+
+async function retryCutout(item, file) {
+  if (state.processing) return toast('请等待当前任务完成');
+  if (!file.type.startsWith('image/')) return toast('请选择图片文件');
+  const previous = snapshotItem(item);
+  const card = gallery.querySelector(`[data-id="${item.id}"]`);
+  state.processing = true;
+  state.operation = 'retry';
+  state.phase = 'upload';
+  state.batchTotal = 1;
+  state.uploaded = 0;
+  state.completed = 0;
+  state.recovered = false;
+  item.status = 'retrying';
+  updateCard(item, '正在上传原图');
+  updateUI();
+
+  try {
+    const job = await api('/api/jobs', { method: 'POST', json: { count: 1, mode: 'cutout' } });
+    const prepared = await prepareProductImage(file);
+    await resilientApi(`/api/jobs/${job.jobId}/images/0`, {
+      method: 'PUT', token: job.token, body: prepared.blob, contentType: prepared.blob.type
+    });
+    item.jobId = job.jobId;
+    item.index = 0;
+    item.token = job.token;
+    item.status = 'retrying';
+    state.uploaded = 1;
+    state.phase = 'starting';
+    state.activeJob = {
+      jobId: job.jobId,
+      token: job.token,
+      itemIds: [item.id],
+      kind: 'retry',
+      previousItems: [previous]
+    };
+    saveProcessingSession();
+    updateProgress();
+    await resilientApi(`/api/jobs/${job.jobId}/start`, { method: 'POST', token: job.token, json: {} });
+    state.phase = 'cloud';
+    state.cloudStartedAt = performance.now();
+    updateCard(item, 'AI 精修中');
+    updateProgress();
+    await pollJob(job, [item]);
+    toast('这一件已重新抠图');
+  } catch (error) {
+    console.error(error);
+    restoreItemSnapshot(item, previous);
+    if (previous.status === 'ready' && previous.url) {
+      renderReadyItem(item, previous.url);
+      updateCard(item, '已保留原结果');
+      toast('重试未完成，原结果已保留');
+    } else {
+      item.status = 'error';
+      card?.classList.remove('is-retrying');
+      updateCard(item, '重试失败');
+      toast(error.message || '重新抠图失败，请稍后再试');
+    }
+    state.activeJob = null;
+  } finally {
+    state.processing = false;
+    state.phase = '';
+    state.operation = 'batch';
+    saveProcessingSession();
+    updateUI();
+  }
+}
+
+function snapshotItem(item) {
+  const { id, status, jobId, index, token, url, background } = item;
+  return { id, status, jobId, index, token, url, background };
+}
+
+function restoreItemSnapshot(item, snapshot) {
+  Object.assign(item, snapshot, { file: null });
 }
 
 function removeItem(id) {
@@ -231,6 +323,7 @@ function removeItem(id) {
 
 function clearAll() {
   if (state.processing) return toast('处理完成后即可清除');
+  if (state.items.length && !confirm('确认清除当前图集中的全部图片？')) return;
   state.items = []; state.activeJob = null; localStorage.removeItem(SESSION_KEY); gallery.replaceChildren(); getGalleryColumns(); previewSection.hidden = true; actionBar.hidden = true; updateUI();
 }
 
@@ -240,10 +333,17 @@ function updateUI() {
   $('#readyCount').textContent = `${ready} 件单品`;
   $('#progress').hidden = !state.processing;
   fileInput.disabled = state.processing;
+  $('#clearButton').disabled = state.processing;
   exportButton.disabled = state.processing || ready === 0;
   state.items.forEach((item, index) => {
     const card = gallery.querySelector(`[data-id="${item.id}"]`);
-    if (card) card.querySelector('.card-index').textContent = `LOOK ${String(index + 1).padStart(2, '0')}`;
+    if (card) {
+      const look = `LOOK ${String(index + 1).padStart(2, '0')}`;
+      card.querySelector('.card-index').textContent = look;
+      card.querySelector('.retry-button').disabled = state.processing;
+      card.querySelector('.retry-button').setAttribute('aria-label', `重新抠图 ${look}`);
+      card.querySelector('.remove-button').disabled = state.processing;
+    }
   });
   updateGallerySurface();
   updateProgress();
@@ -262,8 +362,8 @@ function updateProgress() {
     progressBar.style.width = `${percent}%`;
     progressTrack.setAttribute('aria-valuenow', String(percent));
     progressTrack.setAttribute('aria-valuetext', `已上传 ${state.uploaded} / ${state.batchTotal}`);
-    $('#progressText').textContent = `安全上传 ${state.uploaded} / ${state.batchTotal}`;
-    $('#progressDetail').textContent = document.hidden ? '上传已暂停，返回页面后会自动继续' : '请保持页面打开，上传完成后即可切换应用';
+    $('#progressText').textContent = state.operation === 'retry' ? '正在上传这件商品' : `安全上传 ${state.uploaded} / ${state.batchTotal}`;
+    $('#progressDetail').textContent = document.hidden ? '上传已暂停，返回页面后会自动继续' : state.operation === 'retry' ? '原结果会保留到新结果完成' : '请保持页面打开，上传完成后即可切换应用';
     $('#etaText').textContent = navigator.onLine ? '' : '等待网络';
     return;
   }
@@ -271,7 +371,7 @@ function updateProgress() {
     progressBar.style.width = '100%';
     progressTrack.setAttribute('aria-valuenow', '100');
     progressTrack.setAttribute('aria-valuetext', '图片上传完成，正在提交云端任务');
-    $('#progressText').textContent = `上传完成 ${state.batchTotal} / ${state.batchTotal}`;
+    $('#progressText').textContent = state.operation === 'retry' ? '单件上传完成' : `上传完成 ${state.batchTotal} / ${state.batchTotal}`;
     $('#progressDetail').textContent = '正在交给云端，请再保持页面片刻';
     $('#etaText').textContent = '正在提交';
     return;
@@ -280,7 +380,7 @@ function updateProgress() {
   progressBar.style.width = `${percent}%`;
   progressTrack.setAttribute('aria-valuenow', String(percent));
   progressTrack.setAttribute('aria-valuetext', `已抠图 ${state.completed} / ${state.batchTotal}`);
-  $('#progressText').textContent = `L4 云端抠图 ${state.completed} / ${state.batchTotal}`;
+  $('#progressText').textContent = state.operation === 'retry' ? '正在重新抠图' : `L4 云端抠图 ${state.completed} / ${state.batchTotal}`;
   $('#progressDetail').textContent = state.recovered ? '已恢复后台任务，正在同步最新结果' : '已交给云端，切换应用或关闭页面也会继续';
   if (state.completed > 0 && state.completed < state.batchTotal) {
     const elapsed = performance.now() - state.cloudStartedAt;
@@ -554,7 +654,7 @@ function saveProcessingSession() {
     title: $('#collectionTitle').value,
     activeJob: state.activeJob,
     items: state.items.filter((item) => item.jobId).map(({ id, status, jobId, index, token, url, background }) => ({
-      id, status: status === 'ready' ? 'ready' : status === 'error' ? 'error' : 'uploaded', jobId, index, token, url, background
+      id, status: ['ready', 'error', 'retrying'].includes(status) ? status : 'uploaded', jobId, index, token, url, background
     }))
   };
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(record)); } catch (error) { console.warn('Unable to save processing session', error); }
@@ -576,7 +676,13 @@ async function restoreProcessingSession() {
   getGalleryColumns();
   state.items.forEach((item) => {
     createCard(item);
-    if (item.status === 'ready' && item.url) renderReadyItem(item);
+    if (item.url) {
+      const card = gallery.querySelector(`[data-id="${item.id}"]`);
+      const image = card?.querySelector('img');
+      if (image) { image.src = item.url; image.alt = `服装单品 ${state.items.indexOf(item) + 1}`; card.classList.add('is-ready'); }
+      if (item.status === 'ready') renderReadyItem(item);
+      else updateCard(item, item.status === 'error' ? '处理失败' : '等待云端抠图');
+    }
     else updateCard(item, item.status === 'error' ? '处理失败' : '等待云端抠图');
   });
 
@@ -589,13 +695,17 @@ async function restoreProcessingSession() {
   if (!batchItems.length) return;
   state.activeJob = active;
   state.processing = true;
+  state.operation = active.kind === 'retry' ? 'retry' : 'batch';
   state.phase = 'starting';
   state.batchTotal = batchItems.length;
   state.uploaded = batchItems.length;
   state.completed = batchItems.filter((item) => item.status === 'ready').length;
   state.cloudStartedAt = performance.now();
   state.recovered = true;
-  batchItems.filter((item) => item.status !== 'ready').forEach((item) => updateCard(item, '后台处理中'));
+  batchItems.filter((item) => item.status !== 'ready').forEach((item) => {
+    item.status = active.kind === 'retry' ? 'retrying' : item.status;
+    updateCard(item, active.kind === 'retry' ? 'AI 精修中' : '后台处理中');
+  });
   updateUI();
   try {
     await resilientApi(`/api/jobs/${active.jobId}/start`, { method: 'POST', token: active.token, json: {} });
@@ -605,12 +715,27 @@ async function restoreProcessingSession() {
     await pollJob(active, batchItems);
   } catch (error) {
     console.error(error);
-    batchItems.filter((item) => item.status !== 'ready').forEach((item) => { item.status = 'error'; updateCard(item, '处理失败'); });
+    if (active.kind === 'retry' && Array.isArray(active.previousItems)) {
+      batchItems.forEach((item) => {
+        const previous = active.previousItems.find((candidate) => candidate.id === item.id);
+        if (previous) {
+          restoreItemSnapshot(item, previous);
+          if (previous.status === 'ready' && previous.url) {
+            renderReadyItem(item, previous.url);
+            updateCard(item, '已保留原结果');
+          } else updateCard(item, '重试失败');
+        }
+      });
+      toast('单件重试未完成，原结果已保留');
+    } else {
+      batchItems.filter((item) => item.status !== 'ready').forEach((item) => { item.status = 'error'; updateCard(item, '处理失败'); });
+      toast(error.message || '后台任务恢复失败');
+    }
     state.activeJob = null;
-    toast(error.message || '后台任务恢复失败');
   } finally {
     state.processing = false;
     state.phase = '';
+    state.operation = 'batch';
     saveProcessingSession();
     updateUI();
   }

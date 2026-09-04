@@ -110,7 +110,8 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
 
 .preview-heading { margin-bottom: 22px; }
 .text-button { padding: 8px 0; background: transparent; border: 0; border-bottom: 1px solid currentColor; font-size: 11px; cursor: pointer; }
-.text-button:focus-visible, .remove-button:focus-visible, .export-button:focus-visible { outline: 2px solid var(--bronze); outline-offset: 3px; }
+.text-button:disabled { cursor: wait; opacity: .42; }
+.text-button:focus-visible, .remove-button:focus-visible, .retry-button:focus-visible, .export-button:focus-visible { outline: 2px solid var(--bronze); outline-offset: 3px; }
 .progress { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 10px; margin: -6px 0 18px; color: #6c645c; font-size: 10px; }
 .progress-track { height: 2px; overflow: hidden; background: #ddd5cc; }
 .progress-track i { display: block; width: 0; height: 100%; background: var(--ink); transition: width .25s ease; }
@@ -126,11 +127,22 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
 .garment-card.is-ready img { opacity: 1; }
 .card-loader { position: absolute; top: 50%; left: 50%; width: 22px; height: 22px; margin: -11px; border: 1px solid rgba(24,21,18,.25); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; }
 .garment-card.is-ready .card-loader, .garment-card.is-error .card-loader { display: none; }
-.remove-button { position: absolute; top: 7px; right: 7px; display: grid; width: 32px; height: 32px; padding: 0; place-items: center; color: white; background: rgba(24,21,18,.78); border: 0; border-radius: 50%; cursor: pointer; }
+.retry-overlay { position: absolute; z-index: 1; inset: 0; display: none; align-content: center; justify-items: center; gap: 8px; color: white; background: rgba(24,21,18,.44); backdrop-filter: blur(2px); }
+.retry-overlay i { width: 24px; height: 24px; border: 1px solid rgba(255,255,255,.45); border-top-color: white; border-radius: 50%; animation: spin .8s linear infinite; }
+.retry-overlay b { font-family: var(--sans); font-size: 10px; font-style: normal; font-weight: 500; letter-spacing: .08em; }
+.garment-card.is-retrying .retry-overlay { display: grid; }
+.remove-button { position: absolute; z-index: 2; top: 7px; right: 7px; display: grid; width: 44px; height: 44px; padding: 0; place-items: center; color: white; background: rgba(24,21,18,.78); border: 0; border-radius: 50%; cursor: pointer; touch-action: manipulation; }
 .remove-button svg { width: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.5; }
+.remove-button:disabled { cursor: wait; opacity: .46; }
 .card-meta { display: flex; justify-content: space-between; gap: 6px; padding: 5px 2px 0; color: #716960; font-family: var(--serif); font-size: 10px; letter-spacing: .08em; }
 .card-state { font-family: var(--sans); font-size: 9px; letter-spacing: 0; }
 .garment-card.is-error .card-state { color: #9a342b; }
+.retry-button { display: none; width: 100%; min-height: 44px; align-items: center; justify-content: center; gap: 7px; margin-top: 3px; padding: 0 8px; color: #4f4841; background: transparent; border: 0; border-top: 1px solid rgba(24,21,18,.12); font-size: 10px; cursor: pointer; touch-action: manipulation; transition: color .18s ease, background-color .18s ease; }
+.garment-card.is-ready .retry-button, .garment-card.is-error .retry-button { display: flex; }
+.retry-button:hover { color: var(--ink); background: rgba(255,255,255,.36); }
+.retry-button:disabled { color: #958d85; cursor: wait; opacity: .62; }
+.retry-button svg { width: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.45; }
+.garment-card.is-retrying .retry-button svg { animation: spin .9s linear infinite; }
 
 .action-bar { position: fixed; z-index: 10; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px max(16px, env(safe-area-inset-right)) calc(13px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); color: white; background: rgba(24,21,18,.96); backdrop-filter: blur(12px); }
 .action-bar > div { display: grid; gap: 2px; }
