@@ -88,7 +88,12 @@ async function startJob(request: Request, env: Env, jobId: string, serviceOrigin
   if (!cors) return json({ error: 'Origin not allowed' }, 403);
   const job = await authorizedJob(request, env, jobId);
   if (!job) return json({ error: '任务无效或已失效' }, 401, cors);
-  if (job.status !== 'uploading') return json({ error: '任务已经开始' }, 409, cors);
+  // Starting is idempotent. A mobile browser can lose the response after the
+  // server has accepted the task, then safely retry when it returns foreground.
+  if (job.status === 'queued' || job.status === 'processing' || job.status === 'complete') {
+    return json({ status: job.status }, 202, cors);
+  }
+  if (job.status === 'error') return json({ error: job.error || '任务处理失败' }, 409, cors);
   if (job.mode === 'original') {
     job.status = 'complete'; job.completed = job.count; await putJob(env, jobId, job);
     return json({ status: job.status }, 202, cors);

@@ -86,10 +86,23 @@ class CutoutModel:
     def process(self, api_base: str, count: int, job_id: str, job_token: str) -> None:
         import requests
         from PIL import Image, ImageOps
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
 
         headers = {"Authorization": f"Bearer {job_token}"}
         status_url = f"{api_base}/api/internal/jobs/{job_id}/status"
         session = requests.Session()
+        retry = Retry(
+            total=4,
+            connect=4,
+            read=4,
+            status=4,
+            backoff_factor=0.6,
+            status_forcelist=(408, 425, 429, 500, 502, 503, 504),
+            allowed_methods=frozenset({"GET", "PUT", "PATCH"}),
+            respect_retry_after_header=True,
+        )
+        session.mount("https://", HTTPAdapter(max_retries=retry))
         try:
             session.patch(status_url, headers=headers, json={"status": "processing", "completed": 0}, timeout=30).raise_for_status()
             for start in range(0, count, PRODUCTION_BATCH_SIZE):

@@ -3,11 +3,12 @@ const MAX_EDGE = matchMedia('(pointer: coarse)').matches ? 1280 : 1440;
 const SHARE_API = 'https://atelier-board-share.s98081096.workers.dev';
 const CUTOUT_BACKGROUND = '#f5f1ea';
 const HISTORY_KEY = 'atelier-board.collections.v1';
+const SESSION_KEY = 'atelier-board.processing.v1';
 const HISTORY_LIMIT = 100;
 const EXPORT_MAX_PIXELS = matchMedia('(pointer: coarse)').matches ? 13_500_000 : 24_000_000;
 const EXPORT_MAX_HEIGHT = matchMedia('(pointer: coarse)').matches ? 15_500 : 24_000;
 
-const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'cutout' };
+const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'cutout', activeJob: null, recovered: false };
 const $ = (selector) => document.querySelector(selector);
 const fileInput = $('#fileInput');
 const dropZone = $('#dropZone');
@@ -71,26 +72,32 @@ async function addFiles(files) {
       const prepared = await prepareProductImage(item.file);
       item.background = prepared.background;
       updateGallerySurface();
-      item.file = null;
-      await api(`/api/jobs/${job.jobId}/images/${item.index}`, {
+      await resilientApi(`/api/jobs/${job.jobId}/images/${item.index}`, {
         method: 'PUT', token: job.token, body: prepared.blob, contentType: prepared.blob.type
       });
+      item.file = null;
       item.status = 'uploaded';
       state.uploaded += 1;
       updateCard(item, '等待云端抠图');
       updateProgress();
     });
 
+    state.phase = 'starting';
+    state.activeJob = { jobId: job.jobId, token: job.token, itemIds: batchItems.map((item) => item.id) };
+    saveProcessingSession();
+    updateProgress();
+    await resilientApi(`/api/jobs/${job.jobId}/start`, { method: 'POST', token: job.token, json: {} });
     state.phase = 'cloud';
     state.cloudStartedAt = performance.now();
     updateProgress();
-    await api(`/api/jobs/${job.jobId}/start`, { method: 'POST', token: job.token, json: {} });
     await pollJob(job, batchItems);
   } catch (error) {
     console.error(error);
     batchItems.filter((item) => item.status !== 'ready').forEach((item) => {
       item.status = 'error'; updateCard(item, '处理失败');
     });
+    state.activeJob = null;
+    saveProcessingSession();
     toast(error.message || '处理失败，请稍后重试');
   } finally {
     state.processing = false;
@@ -100,28 +107,48 @@ async function addFiles(files) {
 }
 
 async function pollJob(job, items) {
-  let rendered = 0;
+  let rendered = items.filter((item) => item.status === 'ready').length;
   while (true) {
-    const result = await api(`/api/jobs/${job.jobId}`, { token: job.token });
+    await waitForForegroundAndNetwork();
+    let result;
+    try {
+      result = await api(`/api/jobs/${job.jobId}`, { token: job.token });
+    } catch (error) {
+      if (!isTransientError(error)) throw error;
+      markConnectionPaused(items);
+      await waitForRetry(2500);
+      continue;
+    }
     state.completed = result.completed;
     while (rendered < result.completed) {
       const item = items[rendered];
-      item.url = `${SHARE_API}/media/${job.jobId}/${item.index}`;
-      item.status = 'ready';
-      const card = gallery.querySelector(`[data-id="${item.id}"]`);
-      if (card) {
-        const image = card.querySelector('img');
-        image.src = item.url; image.alt = `服装单品 ${state.items.indexOf(item) + 1}`;
-        card.classList.add('is-ready');
-      }
-      updateCard(item, '云端已抠图');
+      renderReadyItem(item, `${SHARE_API}/media/${job.jobId}/${item.index}`);
       rendered += 1;
     }
+    state.recovered = false;
+    saveProcessingSession();
     updateUI();
-    if (result.status === 'complete') return;
+    if (result.status === 'complete') {
+      state.activeJob = null;
+      saveProcessingSession();
+      return;
+    }
     if (result.status === 'error') throw new Error(result.error || '图片处理失败');
-    await delay(document.hidden ? 5000 : 1500);
+    await waitForRetry(1500);
   }
+}
+
+function renderReadyItem(item, url = item.url) {
+  item.url = url;
+  item.status = 'ready';
+  const card = gallery.querySelector(`[data-id="${item.id}"]`);
+  if (card) {
+    const image = card.querySelector('img');
+    image.src = item.url;
+    image.alt = `服装单品 ${state.items.indexOf(item) + 1}`;
+    card.classList.add('is-ready');
+  }
+  updateCard(item, '云端已抠图');
 }
 
 async function prepareProductImage(file) {
@@ -159,7 +186,7 @@ function createCard(item) {
   card.style.setProperty('--item-background', item.background);
   card.querySelector('.remove-button').addEventListener('click', () => removeItem(item.id));
   const columns = getGalleryColumns();
-  columns[(state.items.length - 1) % columns.length].appendChild(fragment);
+  columns[Math.max(0, state.items.indexOf(item)) % columns.length].appendChild(fragment);
 }
 
 function getGalleryColumns() {
@@ -198,12 +225,13 @@ function removeItem(id) {
   gallery.querySelector(`[data-id="${id}"]`)?.remove();
   rebalanceGallery();
   if (!state.items.length) { previewSection.hidden = true; actionBar.hidden = true; }
+  saveProcessingSession();
   updateUI();
 }
 
 function clearAll() {
   if (state.processing) return toast('处理完成后即可清除');
-  state.items = []; gallery.replaceChildren(); getGalleryColumns(); previewSection.hidden = true; actionBar.hidden = true; updateUI();
+  state.items = []; state.activeJob = null; localStorage.removeItem(SESSION_KEY); gallery.replaceChildren(); getGalleryColumns(); previewSection.hidden = true; actionBar.hidden = true; updateUI();
 }
 
 function updateUI() {
@@ -235,8 +263,17 @@ function updateProgress() {
     progressTrack.setAttribute('aria-valuenow', String(percent));
     progressTrack.setAttribute('aria-valuetext', `已上传 ${state.uploaded} / ${state.batchTotal}`);
     $('#progressText').textContent = `安全上传 ${state.uploaded} / ${state.batchTotal}`;
-    $('#progressDetail').textContent = '原图将在抠图完成后立即删除';
-    $('#etaText').textContent = '';
+    $('#progressDetail').textContent = document.hidden ? '上传已暂停，返回页面后会自动继续' : '请保持页面打开，上传完成后即可切换应用';
+    $('#etaText').textContent = navigator.onLine ? '' : '等待网络';
+    return;
+  }
+  if (state.phase === 'starting') {
+    progressBar.style.width = '100%';
+    progressTrack.setAttribute('aria-valuenow', '100');
+    progressTrack.setAttribute('aria-valuetext', '图片上传完成，正在提交云端任务');
+    $('#progressText').textContent = `上传完成 ${state.batchTotal} / ${state.batchTotal}`;
+    $('#progressDetail').textContent = '正在交给云端，请再保持页面片刻';
+    $('#etaText').textContent = '正在提交';
     return;
   }
   const percent = Math.round(state.completed / Math.max(1, state.batchTotal) * 100);
@@ -244,7 +281,7 @@ function updateProgress() {
   progressTrack.setAttribute('aria-valuenow', String(percent));
   progressTrack.setAttribute('aria-valuetext', `已抠图 ${state.completed} / ${state.batchTotal}`);
   $('#progressText').textContent = `L4 云端抠图 ${state.completed} / ${state.batchTotal}`;
-  $('#progressDetail').textContent = '可以留在此页面查看实时结果';
+  $('#progressDetail').textContent = state.recovered ? '已恢复后台任务，正在同步最新结果' : '已交给云端，切换应用或关闭页面也会继续';
   if (state.completed > 0 && state.completed < state.batchTotal) {
     const elapsed = performance.now() - state.cloudStartedAt;
     $('#etaText').textContent = `约剩 ${formatDuration(elapsed / state.completed * (state.batchTotal - state.completed))}`;
@@ -457,8 +494,126 @@ async function api(path, options = {}) {
     body: options.json !== undefined ? JSON.stringify(options.json) : options.body
   });
   const result = response.status === 204 ? {} : await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || `请求失败（${response.status}）`);
+  if (!response.ok) {
+    const error = new Error(result.error || `请求失败（${response.status}）`);
+    error.status = response.status;
+    throw error;
+  }
   return result;
+}
+
+async function resilientApi(path, options) {
+  let attempt = 0;
+  while (true) {
+    await waitForForegroundAndNetwork();
+    try {
+      return await api(path, options);
+    } catch (error) {
+      if (!isTransientError(error) || attempt >= 4) throw error;
+      attempt += 1;
+      await waitForRetry(Math.min(8000, 700 * 2 ** attempt));
+    }
+  }
+}
+
+function isTransientError(error) {
+  return !navigator.onLine || !Number.isInteger(error?.status) || error.status === 408 || error.status === 425 || error.status === 429 || error.status >= 500;
+}
+
+async function waitForForegroundAndNetwork() {
+  while (document.hidden || !navigator.onLine) {
+    await new Promise((resolve) => {
+      const resume = () => {
+        if (document.hidden || !navigator.onLine) return;
+        document.removeEventListener('visibilitychange', resume);
+        removeEventListener('online', resume);
+        resolve();
+      };
+      document.addEventListener('visibilitychange', resume);
+      addEventListener('online', resume, { once: true });
+    });
+  }
+}
+
+async function waitForRetry(milliseconds) {
+  if (document.hidden || !navigator.onLine) return await waitForForegroundAndNetwork();
+  await delay(milliseconds);
+}
+
+function markConnectionPaused(items) {
+  state.recovered = true;
+  items.filter((item) => item.status !== 'ready').forEach((item) => updateCard(item, '后台处理中'));
+  $('#progressDetail').textContent = '连接暂时中断，云端仍在处理；恢复后自动同步';
+}
+
+function saveProcessingSession() {
+  if (!state.items.length) return localStorage.removeItem(SESSION_KEY);
+  const record = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    title: $('#collectionTitle').value,
+    activeJob: state.activeJob,
+    items: state.items.filter((item) => item.jobId).map(({ id, status, jobId, index, token, url, background }) => ({
+      id, status: status === 'ready' ? 'ready' : status === 'error' ? 'error' : 'uploaded', jobId, index, token, url, background
+    }))
+  };
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(record)); } catch (error) { console.warn('Unable to save processing session', error); }
+}
+
+async function restoreProcessingSession() {
+  let record;
+  try { record = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { return localStorage.removeItem(SESSION_KEY); }
+  if (!record || record.version !== 1 || !Array.isArray(record.items) || Date.now() - Date.parse(record.savedAt) > 31 * 86400000) {
+    return localStorage.removeItem(SESSION_KEY);
+  }
+  const validItems = record.items.filter((item) => item && typeof item.id === 'string' && /^[0-9a-f]{32}$/.test(item.jobId) && Number.isInteger(item.index) && typeof item.token === 'string');
+  if (!validItems.length) return localStorage.removeItem(SESSION_KEY);
+
+  state.items = validItems.map((item) => ({ ...item, file: null, background: CUTOUT_BACKGROUND }));
+  if (typeof record.title === 'string') $('#collectionTitle').value = record.title;
+  previewSection.hidden = false;
+  actionBar.hidden = false;
+  getGalleryColumns();
+  state.items.forEach((item) => {
+    createCard(item);
+    if (item.status === 'ready' && item.url) renderReadyItem(item);
+    else updateCard(item, item.status === 'error' ? '处理失败' : '等待云端抠图');
+  });
+
+  const active = record.activeJob;
+  if (!active || !/^[0-9a-f]{32}$/.test(active.jobId) || typeof active.token !== 'string' || !Array.isArray(active.itemIds)) {
+    updateUI();
+    return;
+  }
+  const batchItems = active.itemIds.map((id) => state.items.find((item) => item.id === id)).filter(Boolean);
+  if (!batchItems.length) return;
+  state.activeJob = active;
+  state.processing = true;
+  state.phase = 'starting';
+  state.batchTotal = batchItems.length;
+  state.uploaded = batchItems.length;
+  state.completed = batchItems.filter((item) => item.status === 'ready').length;
+  state.cloudStartedAt = performance.now();
+  state.recovered = true;
+  batchItems.filter((item) => item.status !== 'ready').forEach((item) => updateCard(item, '后台处理中'));
+  updateUI();
+  try {
+    await resilientApi(`/api/jobs/${active.jobId}/start`, { method: 'POST', token: active.token, json: {} });
+    state.phase = 'cloud';
+    state.cloudStartedAt = performance.now();
+    updateProgress();
+    await pollJob(active, batchItems);
+  } catch (error) {
+    console.error(error);
+    batchItems.filter((item) => item.status !== 'ready').forEach((item) => { item.status = 'error'; updateCard(item, '处理失败'); });
+    state.activeJob = null;
+    toast(error.message || '后台任务恢复失败');
+  } finally {
+    state.processing = false;
+    state.phase = '';
+    saveProcessingSession();
+    updateUI();
+  }
 }
 
 async function copyShareLink() { await navigator.clipboard.writeText($('#shareUrl').value); toast('分享网址已复制'); }
@@ -562,4 +717,9 @@ function toast(message) { const element = $('#toast'); element.textContent = mes
 
 document.body.dataset.mode = 'cutout';
 renderHistory();
+restoreProcessingSession();
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) saveProcessingSession();
+  updateProgress();
+});
 addEventListener('beforeunload', () => { if (exportedObjectUrl) URL.revokeObjectURL(exportedObjectUrl); });
