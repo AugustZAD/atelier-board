@@ -127,36 +127,19 @@ async function pollJob(job, items) {
 async function prepareProductImage(file) {
   const bitmap = await createImageBitmap(file);
   try {
-    const sourceHeight = detectScreenshotCrop(bitmap);
-    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, sourceHeight));
+    const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
     const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(sourceHeight * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
     const context = canvas.getContext('2d');
     context.fillStyle = '#ffffff'; context.fillRect(0, 0, width, height);
-    context.drawImage(bitmap, 0, 0, bitmap.width, sourceHeight, 0, 0, width, height);
+    context.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, 0, 0, width, height);
     return {
       background: CUTOUT_BACKGROUND,
       blob: await canvasToBlob(canvas, 'image/jpeg', .92)
     };
   } finally { bitmap.close(); }
-}
-
-function detectScreenshotCrop(bitmap) {
-  if (bitmap.height <= bitmap.width * 1.04) return bitmap.height;
-  const sample = document.createElement('canvas');
-  sample.width = 96; sample.height = 96;
-  const context = sample.getContext('2d', { willReadFrequently: true });
-  context.drawImage(bitmap, 0, 0, 96, 96);
-  const pixels = context.getImageData(0, 72, 96, 24).data;
-  let dark = 0;
-  for (let index = 0; index < pixels.length; index += 4) {
-    const luminance = pixels[index] * .2126 + pixels[index + 1] * .7152 + pixels[index + 2] * .0722;
-    if (luminance < 210) dark += 1;
-  }
-  const ratio = dark / (96 * 24);
-  return ratio > .004 && ratio < .2 ? Math.round(bitmap.height * .62) : bitmap.height;
 }
 
 async function runPool(items, concurrency, handler) {
