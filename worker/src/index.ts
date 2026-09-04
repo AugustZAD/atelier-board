@@ -180,7 +180,7 @@ async function getCollection(id: string, env: Env, serviceOrigin: string): Promi
 async function getMedia(env: Env, jobId: string, index: number): Promise<Response> {
   const object = await env.COLLECTIONS.getWithMetadata<{ contentType?: string }>(outputKey(jobId, index), { type: 'stream', cacheTtl: 3600 });
   if (!object.value) return new Response(null, { status: 404 });
-  return new Response(object.value, { headers: { 'Cache-Control': 'public, max-age=86400', 'Content-Type': object.metadata?.contentType || 'image/webp', 'X-Content-Type-Options': 'nosniff' } });
+  return new Response(object.value, { headers: { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'public, max-age=86400', 'Content-Type': object.metadata?.contentType || 'image/webp', 'X-Content-Type-Options': 'nosniff' } });
 }
 
 async function authorizedJob(request: Request, env: Env, jobId: string): Promise<JobRecord | null> {

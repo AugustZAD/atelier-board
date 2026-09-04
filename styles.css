@@ -153,8 +153,20 @@ h2 { margin: 0; font-family: var(--display); font-size: 28px; font-weight: 300; 
 .share-url-row { display: grid; grid-template-columns: 1fr auto; margin-bottom: 12px; }
 .share-url-row input { min-width: 0; height: 50px; padding: 0 12px; color: #625b54; background: var(--paper); border: 1px solid var(--line); border-right: 0; border-radius: 0; font-size: 11px; outline: none; }
 .share-url-row button { min-width: 70px; color: white; background: var(--ink); border: 0; cursor: pointer; }
-.dialog-primary { width: 100%; min-height: 52px; color: white; background: var(--bronze); border: 0; font-weight: 500; cursor: pointer; }
-.dialog-close:focus-visible, .share-url-row button:focus-visible, .dialog-primary:focus-visible { outline: 2px solid var(--bronze); outline-offset: 3px; }
+.share-options { border-top: 1px solid var(--line); }
+.share-option { display: grid; width: 100%; min-height: 86px; grid-template-columns: 24px 1fr auto; align-items: center; gap: 14px; padding: 15px 2px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--line); cursor: pointer; transition: padding .18s ease, background-color .18s ease; }
+.share-option:hover { padding-inline: 10px; background: var(--paper); }
+.share-option:disabled { cursor: wait; opacity: .55; }
+.share-option > svg { width: 21px; fill: none; stroke: var(--bronze); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.4; }
+.share-option > span { display: grid; gap: 5px; }
+.share-option strong { font-size: 13px; font-weight: 500; }
+.share-option small { color: #766e66; font-size: 10px; line-height: 1.5; }
+.share-option > i { font-family: var(--serif); font-size: 20px; font-style: normal; }
+.image-result h2 { margin-right: 30px; }
+.image-result > img { display: block; width: min(100%, 220px); max-height: 250px; margin: 0 auto 18px; object-fit: contain; object-position: top; background: var(--paper); border: 1px solid var(--line); }
+.dialog-primary { display: grid; width: 100%; min-height: 52px; place-items: center; color: white; background: var(--bronze); border: 0; font-weight: 500; text-decoration: none; cursor: pointer; }
+.dialog-secondary { width: 100%; min-height: 48px; margin-top: 8px; color: var(--ink); background: transparent; border: 1px solid var(--line); cursor: pointer; }
+.dialog-close:focus-visible, .share-url-row button:focus-visible, .dialog-primary:focus-visible, .dialog-secondary:focus-visible, .share-option:focus-visible { outline: 2px solid var(--bronze); outline-offset: 3px; }
 
 .history-dialog { width: min(calc(100% - 24px), 600px); max-height: min(82dvh, 760px); padding: 32px 22px 24px; overflow: auto; color: var(--ink); background: var(--white); border: 1px solid var(--line); border-radius: 0; box-shadow: 0 24px 80px rgba(24,21,18,.22); }
 .history-dialog::backdrop { background: rgba(24,21,18,.58); backdrop-filter: blur(3px); }

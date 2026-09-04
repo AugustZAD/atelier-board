@@ -81,7 +81,7 @@
         <strong id="readyCount">0 件单品</strong>
       </div>
       <button id="exportButton" class="export-button" type="button">
-        <span>生成分享链接</span>
+        <span>分享图集</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5" /></svg>
       </button>
     </footer>
@@ -104,14 +104,39 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
       </button>
       <p class="step">03 / SHARE</p>
-      <h2>Your collection is live.</h2>
-      <p class="dialog-copy">复制网址发给任何人，对方打开即可浏览。链接将在 30 天后自动失效。</p>
-      <label class="field-label" for="shareUrl">分享网址</label>
-      <div class="share-url-row">
-        <input id="shareUrl" type="url" readonly />
-        <button id="copyLink" type="button">复制</button>
+      <div id="shareChoices">
+        <h2>Choose how to share.</h2>
+        <p class="dialog-copy">发送在线图集，或保存一张适合手机浏览的高清长图。</p>
+        <div class="share-options">
+          <button id="createLinkChoice" class="share-option" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.15 1.15M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.15-1.15" /></svg>
+            <span><strong>分享网址</strong><small>生成可直接打开的在线图集 · 30 天有效</small></span>
+            <i aria-hidden="true">→</i>
+          </button>
+          <button id="exportImageChoice" class="share-option" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 19h14" /></svg>
+            <span><strong>高清长图</strong><small id="imageExportStatus">双列瀑布流 · 保存后永久有效</small></span>
+            <i aria-hidden="true">→</i>
+          </button>
+        </div>
       </div>
-      <button id="nativeShare" class="dialog-primary" type="button">分享给其他人</button>
+      <div id="linkResult" hidden>
+        <h2>Your collection is live.</h2>
+        <p class="dialog-copy">复制网址发给任何人，对方打开即可浏览。链接将在 30 天后自动失效。</p>
+        <label class="field-label" for="shareUrl">分享网址</label>
+        <div class="share-url-row">
+          <input id="shareUrl" type="url" readonly />
+          <button id="copyLink" type="button">复制</button>
+        </div>
+        <button id="nativeShare" class="dialog-primary" type="button">分享给其他人</button>
+      </div>
+      <div id="imageResult" class="image-result" hidden>
+        <h2>Your image is ready.</h2>
+        <p class="dialog-copy">高清长图已在本机生成，不依赖分享网址。iPhone 如未直接下载，可打开预览后长按保存。</p>
+        <img id="longImagePreview" alt="高清图集长图预览" />
+        <a id="downloadLongImage" class="dialog-primary image-download" download>保存高清长图</a>
+        <button id="shareLongImage" class="dialog-secondary" type="button" hidden>发送到其他 App</button>
+      </div>
     </dialog>
 
     <dialog id="historyDialog" class="history-dialog" aria-labelledby="history-title">

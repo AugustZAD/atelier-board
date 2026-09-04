@@ -4,6 +4,8 @@ const SHARE_API = 'https://atelier-board-share.s98081096.workers.dev';
 const CUTOUT_BACKGROUND = '#f5f1ea';
 const HISTORY_KEY = 'atelier-board.collections.v1';
 const HISTORY_LIMIT = 100;
+const EXPORT_MAX_PIXELS = matchMedia('(pointer: coarse)').matches ? 13_500_000 : 24_000_000;
+const EXPORT_MAX_HEIGHT = matchMedia('(pointer: coarse)').matches ? 15_500 : 24_000;
 
 const state = { items: [], processing: false, phase: '', batchTotal: 0, uploaded: 0, completed: 0, cloudStartedAt: 0, mode: 'cutout' };
 const $ = (selector) => document.querySelector(selector);
@@ -15,6 +17,8 @@ const actionBar = $('#actionBar');
 const exportButton = $('#exportButton');
 const shareDialog = $('#shareDialog');
 const historyDialog = $('#historyDialog');
+let exportedFile = null;
+let exportedObjectUrl = '';
 
 fileInput.addEventListener('change', (event) => addFiles([...event.target.files]));
 ['dragenter', 'dragover'].forEach((name) => dropZone.addEventListener(name, (event) => {
@@ -28,10 +32,13 @@ $('#clearButton').addEventListener('click', clearAll);
 $('#closeShare').addEventListener('click', () => shareDialog.close());
 $('#copyLink').addEventListener('click', copyShareLink);
 $('#nativeShare').addEventListener('click', nativeShare);
+$('#createLinkChoice').addEventListener('click', createShareLink);
+$('#exportImageChoice').addEventListener('click', exportLongImage);
+$('#shareLongImage').addEventListener('click', shareLongImage);
 $('#historyButton').addEventListener('click', openHistory);
 $('#closeHistory').addEventListener('click', () => historyDialog.close());
 $('#historySearch').addEventListener('input', (event) => renderHistory(event.target.value));
-exportButton.addEventListener('click', createShareLink);
+exportButton.addEventListener('click', openShareDialog);
 
 async function addFiles(files) {
   if (state.processing) return toast('请等待当前一批图片处理完成');
@@ -261,11 +268,22 @@ function updateProgress() {
   } else $('#etaText').textContent = state.completed ? '即将完成' : '正在启动 GPU';
 }
 
+function openShareDialog() {
+  $('#shareChoices').hidden = false;
+  $('#linkResult').hidden = true;
+  $('#imageResult').hidden = true;
+  $('#imageExportStatus').textContent = '双列瀑布流 · 保存后永久有效';
+  $('#createLinkChoice').disabled = false;
+  $('#exportImageChoice').disabled = false;
+  shareDialog.showModal();
+}
+
 async function createShareLink() {
   const ready = state.items.filter((item) => item.status === 'ready');
   if (!ready.length) return;
-  const buttonLabel = exportButton.querySelector('span');
-  exportButton.disabled = true; buttonLabel.textContent = '正在生成网址…';
+  const choice = $('#createLinkChoice');
+  choice.disabled = true;
+  choice.querySelector('small').textContent = '正在生成网址…';
   try {
     const result = await api('/api/collections', {
       method: 'POST',
@@ -287,12 +305,163 @@ async function createShareLink() {
       expiresAt: result.expiresAt
     });
     if (!saved) toast('网址已生成，但浏览器未允许保存历史记录');
-    shareDialog.showModal();
+    $('#shareChoices').hidden = true;
+    $('#linkResult').hidden = false;
   } catch (error) {
     console.error(error); toast(error.message || '生成链接失败，请稍后重试');
   } finally {
-    exportButton.disabled = false; buttonLabel.textContent = '生成分享链接';
+    choice.disabled = false;
+    choice.querySelector('small').textContent = '生成可直接打开的在线图集 · 30 天有效';
   }
+}
+
+async function exportLongImage() {
+  const ready = state.items.filter((item) => item.status === 'ready');
+  if (!ready.length) return;
+  const choice = $('#exportImageChoice');
+  const status = $('#imageExportStatus');
+  choice.disabled = true;
+  $('#createLinkChoice').disabled = true;
+  status.textContent = '正在准备图片…';
+  try {
+    await document.fonts?.ready;
+    const entries = [];
+    for (let index = 0; index < ready.length; index += 1) {
+      const cardImage = gallery.querySelector(`[data-id="${ready[index].id}"] img`);
+      if (cardImage && !cardImage.complete) await cardImage.decode().catch(() => {});
+      const width = cardImage?.naturalWidth || 1;
+      const height = cardImage?.naturalHeight || 1;
+      entries.push({ item: ready[index], width, height });
+    }
+
+    const layout = calculateExportLayout(entries);
+    const canvas = document.createElement('canvas');
+    canvas.width = layout.width;
+    canvas.height = layout.height;
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) throw new Error('当前浏览器无法创建长图');
+    drawExportHeader(context, layout, ready.length);
+
+    for (let index = 0; index < layout.entries.length; index += 1) {
+      status.textContent = `正在绘制 ${index + 1} / ${ready.length}`;
+      const entry = layout.entries[index];
+      const response = await fetch(entry.item.url, { mode: 'cors' });
+      if (!response.ok) throw new Error(`第 ${index + 1} 张图片读取失败`);
+      const bitmap = await createImageBitmap(await response.blob());
+      try {
+        context.drawImage(bitmap, entry.x, entry.y, entry.drawWidth, entry.drawHeight);
+      } finally { bitmap.close(); }
+      drawExportLabel(context, layout, entry, index);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    drawExportFooter(context, layout);
+    status.textContent = '正在生成高清文件…';
+    const blob = await canvasToBlob(canvas, 'image/jpeg', .94);
+    const filename = `${safeFilename($('#collectionTitle').value.trim() || 'atelier-collection')}.jpg`;
+    if (exportedObjectUrl) URL.revokeObjectURL(exportedObjectUrl);
+    exportedObjectUrl = URL.createObjectURL(blob);
+    exportedFile = new File([blob], filename, { type: 'image/jpeg' });
+    $('#longImagePreview').src = exportedObjectUrl;
+    const download = $('#downloadLongImage');
+    download.href = exportedObjectUrl;
+    download.download = filename;
+    const nativeButton = $('#shareLongImage');
+    nativeButton.hidden = !(navigator.share && navigator.canShare?.({ files: [exportedFile] }));
+    $('#shareChoices').hidden = true;
+    $('#imageResult').hidden = false;
+    toast(`高清长图已生成 · ${layout.width} × ${layout.height}px`);
+  } catch (error) {
+    console.error(error);
+    toast(error.message || '长图生成失败，请稍后重试');
+    status.textContent = '生成失败，请重试';
+  } finally {
+    choice.disabled = false;
+    $('#createLinkChoice').disabled = false;
+  }
+}
+
+function calculateExportLayout(entries) {
+  function build(width) {
+    const scale = width / 1600;
+    const margin = Math.round(58 * scale);
+    const columnGap = Math.round(12 * scale);
+    const itemGap = Math.round(18 * scale);
+    const labelHeight = Math.round(34 * scale);
+    const headerHeight = Math.round(272 * scale);
+    const footerHeight = Math.round(92 * scale);
+    const columnWidth = Math.floor((width - margin * 2 - columnGap) / 2);
+    const columnY = [headerHeight, headerHeight];
+    const positioned = entries.map((entry, index) => {
+      const column = index % 2;
+      const drawHeight = Math.max(1, Math.round(columnWidth * entry.height / entry.width));
+      const positionedEntry = { ...entry, x: margin + column * (columnWidth + columnGap), y: columnY[column], drawWidth: columnWidth, drawHeight };
+      columnY[column] += drawHeight + labelHeight + itemGap;
+      return positionedEntry;
+    });
+    const contentBottom = Math.max(...columnY) - itemGap;
+    return { width, height: contentBottom + footerHeight, margin, scale, labelHeight, headerHeight, footerHeight, entries: positioned };
+  }
+
+  let layout = build(1600);
+  for (let attempt = 0; attempt < 5 && (layout.width * layout.height > EXPORT_MAX_PIXELS || layout.height > EXPORT_MAX_HEIGHT); attempt += 1) {
+    const pixelScale = Math.sqrt(EXPORT_MAX_PIXELS / (layout.width * layout.height));
+    const heightScale = EXPORT_MAX_HEIGHT / layout.height;
+    const nextWidth = Math.max(720, Math.floor(layout.width * Math.min(pixelScale, heightScale, .94) / 8) * 8);
+    if (nextWidth === layout.width) break;
+    layout = build(nextWidth);
+  }
+  return layout;
+}
+
+function drawExportHeader(context, layout, count) {
+  const { width, height, margin, scale } = layout;
+  context.fillStyle = CUTOUT_BACKGROUND;
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = '#6f675f';
+  context.font = `500 ${Math.max(9, Math.round(13 * scale))}px Arial, sans-serif`;
+  context.letterSpacing = `${Math.max(1, 3 * scale)}px`;
+  context.fillText('PRIVATE COLLECTION', margin, Math.round(58 * scale));
+  context.letterSpacing = '0px';
+  const title = ($('#collectionTitle').value.trim() || 'AUTUMN / WINTER EDIT').toUpperCase();
+  let titleSize = Math.round(72 * scale);
+  do { context.font = `300 ${titleSize}px Helvetica Neue, Arial, sans-serif`; titleSize -= 2; } while (context.measureText(title).width > width - margin * 2 && titleSize > 28 * scale);
+  context.fillStyle = '#181512';
+  context.fillText(title, margin, Math.round(148 * scale));
+  context.fillStyle = '#6b645d';
+  context.font = `400 ${Math.max(9, Math.round(14 * scale))}px Arial, sans-serif`;
+  context.fillText(`${count} PIECES  ·  ${new Intl.DateTimeFormat('en-CA').format(new Date())}`, margin, Math.round(196 * scale));
+  context.strokeStyle = 'rgba(24,21,18,.18)';
+  context.lineWidth = Math.max(1, scale);
+  context.beginPath(); context.moveTo(margin, Math.round(230 * scale)); context.lineTo(width - margin, Math.round(230 * scale)); context.stroke();
+}
+
+function drawExportLabel(context, layout, entry, index) {
+  context.fillStyle = '#625a53';
+  context.font = `400 ${Math.max(8, Math.round(13 * layout.scale))}px Georgia, serif`;
+  context.letterSpacing = `${Math.max(1, 2 * layout.scale)}px`;
+  context.fillText(`LOOK ${String(index + 1).padStart(2, '0')}`, entry.x + Math.round(2 * layout.scale), entry.y + entry.drawHeight + Math.round(22 * layout.scale));
+  context.letterSpacing = '0px';
+}
+
+function drawExportFooter(context, layout) {
+  const y = layout.height - Math.round(48 * layout.scale);
+  context.fillStyle = '#716960';
+  context.font = `400 ${Math.max(8, Math.round(12 * layout.scale))}px Georgia, serif`;
+  context.textAlign = 'center';
+  context.letterSpacing = `${Math.max(1, 3 * layout.scale)}px`;
+  context.fillText('ATELIER BOARD', layout.width / 2, y);
+  context.textAlign = 'start';
+  context.letterSpacing = '0px';
+}
+
+function safeFilename(value) {
+  return value.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'atelier-collection';
+}
+
+async function shareLongImage() {
+  if (!exportedFile || !navigator.canShare?.({ files: [exportedFile] })) return;
+  try { await navigator.share({ files: [exportedFile], title: $('#collectionTitle').value.trim() || 'Atelier Collection' }); }
+  catch (error) { if (error.name !== 'AbortError') toast('无法调用系统分享，请直接保存图片'); }
 }
 
 async function api(path, options = {}) {
@@ -410,3 +579,4 @@ function toast(message) { const element = $('#toast'); element.textContent = mes
 
 document.body.dataset.mode = 'cutout';
 renderHistory();
+addEventListener('beforeunload', () => { if (exportedObjectUrl) URL.revokeObjectURL(exportedObjectUrl); });
